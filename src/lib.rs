@@ -7,6 +7,7 @@
 
 pub mod convert;
 pub mod error;
+pub mod pac;
 pub mod svd;
 pub mod xml;
 
