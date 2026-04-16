@@ -920,7 +920,7 @@ fn emit_reset_stmts_for_items(
             }
             svd::RegisterBlockItem::Cluster { cluster } => {
                 let field_name = sanitize_field_name(&cluster.name);
-                let (cluster_ty, cluster_size_bytes) =
+                let (_cluster_ty, cluster_size_bytes) =
                     cluster_rust_type_and_size(st, type_defs, ctx, cluster)?;
                 // Only if this cluster field was emitted as a typed struct/array.
                 if let Some(dim) = &cluster.dim {
@@ -1403,14 +1403,18 @@ fn register_wrapper_type(
                 (1u64 << width) - 1
             };
 
+            // Prefix field-related helpers with `field_` to avoid collisions with
+            // register-level methods like `read()` / `write(..)` when a field is
+            // named READ/WRITE/etc.
             let fname = sanitize_field_name(&f.name);
             let n = used_method.entry(fname.clone()).or_insert(0);
-            let method_base = if *n == 0 {
+            let method_suffix = if *n == 0 {
                 fname.clone()
             } else {
                 format!("{fname}_{}", *n)
             };
             *n += 1;
+            let method_base = format!("field_{method_suffix}");
 
             // Read helpers.
             if let Some((_idx, enum_ty)) = &read_pick {
@@ -1488,14 +1492,12 @@ fn register_wrapper_type(
                             "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{ self.write(v.bits() as {base_ty}); }}"
                         ))?;
                     } else {
-                        out.writeln(&format!("pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{"))?;
+                        out.writeln(&format!(
+                            "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{"
+                        ))?;
                         out.indent();
-                        out.writeln(&format!(
-                            "let v = (v.bits() as u64) & 0x{mask:X}u64;"
-                        ))?;
-                        out.writeln(&format!(
-                            "self.write(((v << {lsb}) as {base_ty}));"
-                        ))?;
+                        out.writeln(&format!("let v = (v.bits() as u64) & 0x{mask:X}u64;"))?;
+                        out.writeln(&format!("self.write(((v << {lsb}) as {base_ty}));"))?;
                         out.dedent();
                         out.writeln("}")?;
                     }
