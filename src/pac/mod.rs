@@ -8,7 +8,7 @@
 //! layouts, unions/alternates, etc.) are emitted as byte arrays with comments
 //! when an exact Rust representation would require heavier abstractions.
 
-use crate::{svd, Result};
+use crate::{Result, svd};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -75,7 +75,9 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
     out.writeln("impl<T: Copy> WO<T> {")?;
     out.indent();
     out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }")?;
+    out.writeln(
+        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
+    )?;
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
@@ -84,7 +86,9 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
     out.writeln("#[inline(always)]")?;
     out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
     out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }")?;
+    out.writeln(
+        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
+    )?;
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
@@ -115,7 +119,9 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
     out.indent();
     out.writeln("let p = (self.base + self.offset) as *const WO<T>;")?;
     out.writeln("(*p).write(v);")?;
-    out.writeln("WOOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }")?;
+    out.writeln(
+        "WOOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }",
+    )?;
     out.dedent();
     out.writeln("}")?;
     out.dedent();
@@ -128,17 +134,16 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
     out.indent();
     out.writeln("let p = (self.base + self.offset) as *const RW<T>;")?;
     out.writeln("(*p).write(v);")?;
-    out.writeln("RWOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }")?;
+    out.writeln(
+        "RWOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }",
+    )?;
     out.dedent();
     out.writeln("}")?;
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
 
-    out.writeln(&format!(
-        "pub const DEVICE_NAME: &str = {:?};",
-        device.name
-    ))?;
+    out.writeln(&format!("pub const DEVICE_NAME: &str = {:?};", device.name))?;
     out.writeln(&format!(
         "pub const DEVICE_DESCRIPTION: &str = {:?};",
         device.description
@@ -152,7 +157,11 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
 
     // Keep deterministic order.
     let mut periphs = device.peripherals.clone();
-    periphs.sort_by(|a, b| a.base_address.cmp(&b.base_address).then(a.name.cmp(&b.name)));
+    periphs.sort_by(|a, b| {
+        a.base_address
+            .cmp(&b.base_address)
+            .then(a.name.cmp(&b.name))
+    });
 
     // Address constants.
     for p in &periphs {
@@ -342,17 +351,22 @@ fn generate_peripheral(
     device: &svd::Device,
     p: &svd::Peripheral,
 ) -> Result<()> {
-    let periph_ty = sanitize_type_name(&p.name);
-    let rb_ty = format!("{periph_ty}_RegisterBlock");
-    let base_const = format!("{}_BASE", sanitize_const_name(&p.name));
+    let mod_name = sanitize_module_name(&p.name);
+    let base_const_root = format!("{}_BASE", sanitize_const_name(&p.name));
 
-    out.writeln(&format!("/// Peripheral `{}`", p.name))?;
-    if let Some(desc) = &p.description {
-        out.writeln(&format!("/// {}", doc_escape(desc)))?;
-    }
-    out.writeln("#[repr(C)]")?;
-    out.writeln(&format!("pub struct {rb_ty} {{"))?;
-    out.indent();
+    // Generate the module body separately so type definitions (written into `type_defs`)
+    // never end up inside the module by accident.
+    let mut mod_out = CodeWriter::new();
+    mod_out.indent(); // everything in this writer is inside `pub mod <name> { ... }`
+    mod_out.writeln("use super::*;")?;
+    mod_out.writeln(&format!(
+        "pub const BASE: usize = super::{base_const_root};"
+    ))?;
+    mod_out.writeln("")?;
+
+    mod_out.writeln("#[repr(C)]")?;
+    mod_out.writeln("pub struct RegisterBlock {")?;
+    mod_out.indent();
 
     let items = p
         .registers
@@ -366,20 +380,20 @@ fn generate_peripheral(
         cluster_stack: Vec::new(),
     };
 
-    emit_register_block_items(st, out, type_defs, &ctx, items, 0)?;
+    emit_register_block_items(st, &mut mod_out, type_defs, &ctx, items, 0)?;
 
-    out.dedent();
-    out.writeln("}")?;
+    mod_out.dedent();
+    mod_out.writeln("}")?;
 
     // Reset implementation (best-effort, based on SVD resetValue/resetMask).
-    emit_reset_impl_for_struct(out, st, type_defs, &ctx, items, &rb_ty)?;
+    emit_reset_impl_for_struct(&mut mod_out, st, type_defs, &ctx, items, "RegisterBlock")?;
 
     // Raw pointers.
-    out.writeln(&format!(
-        "pub const {periph_ty}: *const {rb_ty} = {base_const} as *const {rb_ty};"
+    mod_out.writeln(&format!(
+        "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
     ))?;
-    out.writeln(&format!(
-        "pub const {periph_ty}_MUT: *mut {rb_ty} = {base_const} as *mut {rb_ty};"
+    mod_out.writeln(&format!(
+        "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
     ))?;
 
     // Compile-time once-tokens (best-effort): collect WriteOnce/ReadWriteOnce registers by offset.
@@ -387,41 +401,50 @@ fn generate_peripheral(
     let mut name_counts = BTreeMap::new();
     collect_once_regs(&ctx, items, 0, "", None, &mut name_counts, &mut once_regs);
     if !once_regs.is_empty() {
-        let once_ty = format!("{periph_ty}_Once");
-        out.writeln("")?;
-        out.writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
-        out.writeln("///")?;
-        out.writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
-        out.writeln(&format!("pub struct {once_ty} {{"))?;
-        out.indent();
-        out.writeln("base: usize,")?;
+        let once_ty = "Once";
+        mod_out.writeln("")?;
+        mod_out.writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
+        mod_out.writeln("///")?;
+        mod_out.writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
+        mod_out.writeln(&format!("pub struct {once_ty} {{"))?;
+        mod_out.indent();
+        mod_out.writeln("base: usize,")?;
         for r in &once_regs {
-            out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
+            mod_out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
         }
-        out.dedent();
-        out.writeln("}")?;
-        out.writeln(&format!("impl {once_ty} {{"))?;
-        out.indent();
-        out.writeln("/// Create tokens for this peripheral.")?;
-        out.writeln("///")?;
-        out.writeln("/// # Safety")?;
-        out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
-        out.writeln("pub unsafe fn new() -> Self {")?;
-        out.indent();
-        out.writeln(&format!("let base = {base_const};"))?;
-        out.writeln("Self {")?;
-        out.indent();
-        out.writeln("base,")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+        mod_out.writeln(&format!("impl {once_ty} {{"))?;
+        mod_out.indent();
+        mod_out.writeln("/// Create tokens for this peripheral.")?;
+        mod_out.writeln("///")?;
+        mod_out.writeln("/// # Safety")?;
+        mod_out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
+        mod_out.writeln("pub unsafe fn new() -> Self {")?;
+        mod_out.indent();
+        mod_out.writeln("let base = BASE;")?;
+        mod_out.writeln("Self {")?;
+        mod_out.indent();
+        mod_out.writeln("base,")?;
         for r in &once_regs {
-            out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
+            mod_out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
         }
-        out.dedent();
-        out.writeln("}")?;
-        out.dedent();
-        out.writeln("}")?;
-        out.dedent();
-        out.writeln("}")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
     }
+
+    // Wrap the generated peripheral items into their own module.
+    out.writeln(&format!("/// Peripheral `{}`", p.name))?;
+    if let Some(desc) = &p.description {
+        out.writeln(&format!("/// {}", doc_escape(desc)))?;
+    }
+    out.writeln(&format!("pub mod {mod_name} {{"))?;
+    out.s.push_str(&mod_out.s);
+    out.writeln("}")?;
 
     Ok(())
 }
@@ -530,9 +553,7 @@ fn emit_register_field(
                 r.name, dim.dim_increment, size_bytes
             ))?;
             let total = dim.dim_increment.saturating_mul(dim.dim);
-            out.writeln(&format!(
-                "pub {field_name}: [u8; {total} as usize],"
-            ))?;
+            out.writeln(&format!("pub {field_name}: [u8; {total} as usize],"))?;
         }
     } else {
         out.writeln(&format!("pub {field_name}: {reg_ty},"))?;
@@ -561,9 +582,7 @@ fn emit_cluster_field(
                 c.name, dim.dim_increment, cluster_size_bytes
             ))?;
             let total = dim.dim_increment.saturating_mul(dim.dim);
-            out.writeln(&format!(
-                "pub {field_name}: [u8; {total} as usize],"
-            ))?;
+            out.writeln(&format!("pub {field_name}: [u8; {total} as usize],"))?;
         }
     } else {
         out.writeln(&format!("pub {field_name}: {cluster_ty},"))?;
@@ -690,10 +709,7 @@ fn cluster_layout_fingerprint(ctx: &Ctx<'_>, c: &svd::Cluster) -> String {
                     .unwrap_or_else(|| "scalar".to_string());
                 parts.push(format!(
                     "R:{}:{}:{}:{:?}:{dim_sig}",
-                    register.name,
-                    register.address_offset,
-                    bytes,
-                    access
+                    register.name, register.address_offset, bytes, access
                 ));
             }
             svd::RegisterBlockItem::Cluster { cluster } => {
@@ -1148,6 +1164,27 @@ fn sanitize_field_name(s: &str) -> String {
     }
 }
 
+fn sanitize_module_name(s: &str) -> String {
+    // Keep original casing as much as possible so module name matches the SVD peripheral name.
+    // (Rust allows non-snake-case module identifiers.)
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        let good = ch.is_ascii_alphanumeric() || ch == '_';
+        let ch = if good { ch } else { '_' };
+        if i == 0 && ch.is_ascii_digit() {
+            out.push('_');
+        }
+        out.push(ch);
+    }
+    if out.is_empty() {
+        "PERIPH".to_string()
+    } else if is_rust_keyword(&out.to_ascii_lowercase()) {
+        format!("{out}_")
+    } else {
+        out
+    }
+}
+
 fn sanitize_type_name(s: &str) -> String {
     // CamelCase from tokens separated by non-alnum.
     let mut out = String::new();
@@ -1179,8 +1216,7 @@ fn sanitize_type_name(s: &str) -> String {
 fn is_rust_keyword(s: &str) -> bool {
     matches!(
         s,
-        "as"
-            | "break"
+        "as" | "break"
             | "const"
             | "continue"
             | "crate"
@@ -1253,11 +1289,7 @@ fn register_wrapper_type(
     // Base name: <PERIPH>_<CLUSTERS>_<REG>
     let periph = ctx.periph.map(|p| p.name.as_str()).unwrap_or("PERIPH");
     let reg_path = ctx_reg_path(ctx, &r.name);
-    let base = sanitize_type_name(&format!(
-        "{}_{}",
-        periph,
-        reg_path.replace('.', "_")
-    ));
+    let base = sanitize_type_name(&format!("{}_{}", periph, reg_path.replace('.', "_")));
 
     // Fingerprint: access + base type + field layout + enum bindings.
     let mut fp = format!("A={access:?}|T={base_ty}|");
@@ -1373,7 +1405,11 @@ fn register_wrapper_type(
 
             let fname = sanitize_field_name(&f.name);
             let n = used_method.entry(fname.clone()).or_insert(0);
-            let method_base = if *n == 0 { fname.clone() } else { format!("{fname}_{}", *n) };
+            let method_base = if *n == 0 {
+                fname.clone()
+            } else {
+                format!("{fname}_{}", *n)
+            };
             *n += 1;
 
             // Read helpers.
@@ -1381,7 +1417,9 @@ fn register_wrapper_type(
                 // Require readable register.
                 if matches!(
                     access,
-                    svd::AccessType::ReadOnly | svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce
+                    svd::AccessType::ReadOnly
+                        | svd::AccessType::ReadWrite
+                        | svd::AccessType::ReadWriteOnce
                 ) {
                     out.writeln("")?;
                     out.writeln(&format!("/// Field `{}`", f.name))?;
@@ -1410,7 +1448,10 @@ fn register_wrapper_type(
                 }
 
                 // Prefer RMW only for readable+writeable (RW).
-                if matches!(access, svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce) {
+                if matches!(
+                    access,
+                    svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce
+                ) {
                     let set_name = if read_pick.as_ref().map(|x| &x.1) == Some(enum_ty) {
                         format!("set_{method_base}")
                     } else {
@@ -1422,21 +1463,18 @@ fn register_wrapper_type(
                         "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{"
                     ))?;
                     out.indent();
-                    out.writeln(&format!(
-                        "let cur = self.read() as u64;"
-                    ))?;
-                    out.writeln(&format!(
-                        "let v = (v.bits() as u64) & 0x{mask:X}u64;"
-                    ))?;
+                    out.writeln(&format!("let cur = self.read() as u64;"))?;
+                    out.writeln(&format!("let v = (v.bits() as u64) & 0x{mask:X}u64;"))?;
                     out.writeln(&format!(
                         "let new = (cur & !(0x{mask:X}u64 << {lsb})) | (v << {lsb});"
                     ))?;
-                    out.writeln(&format!(
-                        "self.write(new as {base_ty});"
-                    ))?;
+                    out.writeln(&format!("self.write(new as {base_ty});"))?;
                     out.dedent();
                     out.writeln("}")?;
-                } else if matches!(access, svd::AccessType::WriteOnly | svd::AccessType::WriteOnce) {
+                } else if matches!(
+                    access,
+                    svd::AccessType::WriteOnly | svd::AccessType::WriteOnce
+                ) {
                     // We can only safely write without RMW when the field covers the whole register.
                     if lsb == 0 && (width as u64) == reg_bits {
                         let set_name = format!("write_{method_base}");
@@ -1472,7 +1510,10 @@ fn field_lsb_width(f: &svd::Field) -> (u32, u32) {
     match f.bit_range {
         svd::BitRange::BitRangeString { msb, lsb } => (lsb, msb.saturating_sub(lsb) + 1),
         svd::BitRange::LsbMsb { lsb, msb } => (lsb, msb.saturating_sub(lsb) + 1),
-        svd::BitRange::BitOffsetWidth { bit_offset, bit_width } => (bit_offset, bit_width.unwrap_or(1)),
+        svd::BitRange::BitOffsetWidth {
+            bit_offset,
+            bit_width,
+        } => (bit_offset, bit_width.unwrap_or(1)),
     }
 }
 
@@ -1508,7 +1549,11 @@ fn emit_enums(device: &svd::Device, st: &mut GenState, out: &mut CodeWriter) -> 
     Ok(())
 }
 
-fn collect_registers<'a>(items: &'a [svd::RegisterBlockItem], prefix: &str, out: &mut Vec<(&'a svd::Register, String)>) {
+fn collect_registers<'a>(
+    items: &'a [svd::RegisterBlockItem],
+    prefix: &str,
+    out: &mut Vec<(&'a svd::Register, String)>,
+) {
     for it in items {
         match it {
             svd::RegisterBlockItem::Register { register } => {
@@ -1631,9 +1676,15 @@ fn emit_enum_for_field(
         }
         if let Some(v) = val {
             // Ensure discriminant fits into the chosen repr (based on field width).
-            let max = if bit_width >= 64 { u64::MAX } else { (1u64 << bit_width) - 1 };
+            let max = if bit_width >= 64 {
+                u64::MAX
+            } else {
+                (1u64 << bit_width) - 1
+            };
             if *v > max {
-                out.writeln(&format!("// {name} = {v}, // value does not fit into {bit_width} bits"))?;
+                out.writeln(&format!(
+                    "// {name} = {v}, // value does not fit into {bit_width} bits"
+                ))?;
                 continue;
             }
             any_numeric = true;
@@ -1655,9 +1706,13 @@ fn emit_enum_for_field(
     out.writeln(&format!("impl {ty} {{"))?;
     out.indent();
     out.writeln("#[inline(always)]")?;
-    out.writeln(&format!("pub const fn bits(self) -> {repr} {{ self as {repr} }}"))?;
+    out.writeln(&format!(
+        "pub const fn bits(self) -> {repr} {{ self as {repr} }}"
+    ))?;
     out.writeln("#[inline(always)]")?;
-    out.writeln(&format!("pub const fn from_bits(v: {repr}) -> Option<Self> {{"))?;
+    out.writeln(&format!(
+        "pub const fn from_bits(v: {repr}) -> Option<Self> {{"
+    ))?;
     out.indent();
     out.writeln("match v {")?;
     out.indent();
