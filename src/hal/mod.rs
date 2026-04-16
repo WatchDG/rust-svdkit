@@ -122,7 +122,8 @@ impl GpioPortInfo {
 
         // Small per-field enums extracted from SVD (only for known field names).
         // If a field lacks usable enumeratedValues, we fall back to raw bits setters.
-        let mut enums_src = String::new();
+        let mut enum_reexports_src = String::new();
+        let mut local_enums_src = String::new();
         let mut builder_methods_generic = String::new();
         let mut builder_methods_input_only = String::new();
 
@@ -151,14 +152,20 @@ impl GpioPortInfo {
                 .iter()
                 .find(|f| f.name.eq_ignore_ascii_case(fname))
             {
-                let (has_enum, enum_src) = match render_field_enum(fname, f) {
-                    Some(e) => (true, Some(e)),
-                    None => (false, None),
+                let alias = sanitize_type_name(fname);
+                let pac_enum_ty =
+                    pac_enum_type_name_for_field(&self.periph_name, &self.pin_cnf_reg_path, f);
+                let has_enum = if let Some(ty) = &pac_enum_ty {
+                    enum_reexports_src
+                        .push_str(&format!("pub use pac::field_enums::{ty} as {alias};\n"));
+                    true
+                } else if let Some(e) = render_field_enum(fname, f) {
+                    local_enums_src.push_str(&e);
+                    local_enums_src.push('\n');
+                    true
+                } else {
+                    false
                 };
-                if let Some(e) = enum_src {
-                    enums_src.push_str(&e);
-                    enums_src.push('\n');
-                }
 
                 let setter = render_builder_setter(
                     &self.field_pin_cnf,
@@ -175,8 +182,14 @@ impl GpioPortInfo {
             }
         }
 
-        if !enums_src.is_empty() {
-            s.push_str(&indent_block(&enums_src, 8));
+        if !enum_reexports_src.is_empty() || !local_enums_src.is_empty() {
+            let mut all = String::new();
+            all.push_str(&enum_reexports_src);
+            if !enum_reexports_src.is_empty() && !local_enums_src.is_empty() {
+                all.push('\n');
+            }
+            all.push_str(&local_enums_src);
+            s.push_str(&indent_block(&all, 8));
             s.push('\n');
         }
 
@@ -484,10 +497,41 @@ fn gpio_port_type_name(periph_name: &str) -> String {
     }
 }
 
+fn pac_enum_type_name_for_field(
+    periph_name: &str,
+    reg_path: &str,
+    f: &svd::Field,
+) -> Option<String> {
+    let evs = f.enumerated_values.first()?;
+    let has_numeric = evs.enumerated_value.iter().any(|v| match &v.spec {
+        svd::EnumeratedValueSpec::Value { value } => parse_enum_u64(value).is_some(),
+        svd::EnumeratedValueSpec::IsDefault { .. } => false,
+    });
+    if !has_numeric {
+        return None;
+    }
+
+    let base = evs
+        .header_enum_name
+        .as_deref()
+        .or(evs.name.as_deref())
+        .map(sanitize_type_name)
+        .unwrap_or_else(|| {
+            sanitize_type_name(&format!(
+                "{}_{}_{}",
+                periph_name,
+                reg_path.replace('.', "_"),
+                f.name
+            ))
+        });
+    Some(base)
+}
+
 // --------------------------- TIMER HAL generation ---------------------------
 
 #[derive(Debug, Clone)]
 struct TimerInfo {
+    periph_name: String,
     periph_mod: String,
     hal_mod: String,
 
@@ -501,6 +545,8 @@ struct TimerInfo {
     field_tasks_clear: String,
     field_tasks_start: String,
 
+    mode_reg_path: String,
+    bitmode_reg_path: String,
     mode_field: svd::Field,
     bitmode_field: svd::Field,
     shorts_fields: Vec<(usize, svd::Field)>,
@@ -533,17 +579,28 @@ impl TimerInfo {
         } else {
             ((1u64 << mode_width) - 1) as u32
         };
-        let mode_enum = render_field_enum("MODE", &self.mode_field);
-        if let Some(src) = &mode_enum {
-            s.push_str(&indent_block(src, 8));
+        let mode_alias = sanitize_type_name("MODE");
+        let pac_mode_ty =
+            pac_enum_type_name_for_field(&self.periph_name, &self.mode_reg_path, &self.mode_field);
+        let mode_ty = if let Some(ty) = &pac_mode_ty {
+            s.push_str(&indent_block(
+                &format!("pub use pac::field_enums::{ty} as {mode_alias};\n"),
+                8,
+            ));
             s.push('\n');
-        }
-        let mode_ty = if mode_enum.is_some() {
-            sanitize_type_name("MODE")
+            mode_alias.clone()
+        } else if let Some(src) = render_field_enum("MODE", &self.mode_field) {
+            s.push_str(&indent_block(&src, 8));
+            s.push('\n');
+            mode_alias.clone()
         } else {
             "u32".to_string()
         };
-        let mode_arg = if mode_enum.is_some() { "v as u32" } else { "v" };
+        let mode_arg = if pac_mode_ty.is_some() || mode_ty == mode_alias {
+            "v as u32"
+        } else {
+            "v"
+        };
 
         let (bitmode_lsb, bitmode_width) = field_lsb_width(&self.bitmode_field);
         let bitmode_mask: u32 = if bitmode_width >= 32 {
@@ -551,17 +608,27 @@ impl TimerInfo {
         } else {
             ((1u64 << bitmode_width) - 1) as u32
         };
-        let bitmode_enum = render_field_enum("BITMODE", &self.bitmode_field);
-        if let Some(src) = &bitmode_enum {
-            s.push_str(&indent_block(src, 8));
+        let bitmode_alias = sanitize_type_name("BITMODE");
+        let pac_bitmode_ty = pac_enum_type_name_for_field(
+            &self.periph_name,
+            &self.bitmode_reg_path,
+            &self.bitmode_field,
+        );
+        let bitmode_ty = if let Some(ty) = &pac_bitmode_ty {
+            s.push_str(&indent_block(
+                &format!("pub use pac::field_enums::{ty} as {bitmode_alias};\n"),
+                8,
+            ));
             s.push('\n');
-        }
-        let bitmode_ty = if bitmode_enum.is_some() {
-            sanitize_type_name("BITMODE")
+            bitmode_alias.clone()
+        } else if let Some(src) = render_field_enum("BITMODE", &self.bitmode_field) {
+            s.push_str(&indent_block(&src, 8));
+            s.push('\n');
+            bitmode_alias.clone()
         } else {
             "u32".to_string()
         };
-        let bitmode_arg = if bitmode_enum.is_some() {
+        let bitmode_arg = if pac_bitmode_ty.is_some() || bitmode_ty == bitmode_alias {
             "v as u32"
         } else {
             "v"
@@ -842,6 +909,7 @@ fn collect_timers(device: &svd::Device) -> Vec<TimerInfo> {
         let _ = (cc_len, events_compare_len);
 
         out.push(TimerInfo {
+            periph_name: p.name.clone(),
             periph_mod: sanitize_module_name(&p.name),
             hal_mod: sanitize_field_name(&p.name),
 
@@ -855,6 +923,8 @@ fn collect_timers(device: &svd::Device) -> Vec<TimerInfo> {
             field_tasks_clear: sanitize_field_name(&tasks_clear_name),
             field_tasks_start: sanitize_field_name(&tasks_start_name),
 
+            mode_reg_path: mode_reg.name.clone(),
+            bitmode_reg_path: bitmode_reg.name.clone(),
             mode_field,
             bitmode_field,
             shorts_fields,
