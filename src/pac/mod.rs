@@ -150,6 +150,9 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
     ))?;
     out.writeln("")?;
 
+    emit_nvic(device, &mut out)?;
+    out.writeln("")?;
+
     // Enumerations for fields with enumeratedValue blocks.
     // We emit them later in the file for readability, but we collect them here so
     // register wrapper types can reference the final enum type names.
@@ -191,6 +194,141 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
     }
 
     Ok(out.s)
+}
+
+fn emit_nvic(device: &svd::Device, out: &mut CodeWriter) -> Result<()> {
+    let (num_irqs, irqs) = collect_device_interrupts(device);
+    let prio_bits = device
+        .cpu
+        .as_ref()
+        .map(|c| c.nvic_prio_bits)
+        .unwrap_or(8)
+        .min(8);
+
+    if !irqs.is_empty() {
+        out.writeln("#[repr(u16)]")?;
+        out.writeln("#[derive(Copy, Clone, Debug, PartialEq, Eq)]")?;
+        out.writeln("pub enum Interrupt {")?;
+        out.indent();
+        for (n, name, _desc) in &irqs {
+            out.writeln(&format!("{name} = {n},"))?;
+        }
+        out.dedent();
+        out.writeln("}")?;
+        out.writeln("")?;
+    }
+
+    out.writeln("pub mod nvic {")?;
+    out.indent();
+
+    out.writeln(&format!("pub const PRIO_BITS: u8 = {prio_bits}u8;"))?;
+    out.writeln(&format!("pub const NUM_IRQS: u32 = {num_irqs}u32;"))?;
+    out.writeln("")?;
+
+    out.writeln("const NVIC_ISER_BASE: usize = 0xE000_E100;")?;
+    out.writeln("const NVIC_ICER_BASE: usize = 0xE000_E180;")?;
+    out.writeln("const NVIC_ISPR_BASE: usize = 0xE000_E200;")?;
+    out.writeln("const NVIC_ICPR_BASE: usize = 0xE000_E280;")?;
+    out.writeln("const NVIC_IABR_BASE: usize = 0xE000_E300;")?;
+    out.writeln("const NVIC_IPR_BASE: usize = 0xE000_E400;")?;
+    out.writeln("const NVIC_STIR: usize = 0xE000_EF00;")?;
+    out.writeln("")?;
+
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn enable_irq(irq: u32) {")?;
+    out.indent();
+    out.writeln("let idx = (irq >> 5) as usize;")?;
+    out.writeln("let bit = 1u32 << (irq & 31);")?;
+    out.writeln("let p = (NVIC_ISER_BASE + idx * 4) as *mut u32;")?;
+    out.writeln("core::ptr::write_volatile(p, bit);")?;
+    out.dedent();
+    out.writeln("}")?;
+
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn disable_irq(irq: u32) {")?;
+    out.indent();
+    out.writeln("let idx = (irq >> 5) as usize;")?;
+    out.writeln("let bit = 1u32 << (irq & 31);")?;
+    out.writeln("let p = (NVIC_ICER_BASE + idx * 4) as *mut u32;")?;
+    out.writeln("core::ptr::write_volatile(p, bit);")?;
+    out.dedent();
+    out.writeln("}")?;
+
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn pend_irq(irq: u32) {")?;
+    out.indent();
+    out.writeln("let idx = (irq >> 5) as usize;")?;
+    out.writeln("let bit = 1u32 << (irq & 31);")?;
+    out.writeln("let p = (NVIC_ISPR_BASE + idx * 4) as *mut u32;")?;
+    out.writeln("core::ptr::write_volatile(p, bit);")?;
+    out.dedent();
+    out.writeln("}")?;
+
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn unpend_irq(irq: u32) {")?;
+    out.indent();
+    out.writeln("let idx = (irq >> 5) as usize;")?;
+    out.writeln("let bit = 1u32 << (irq & 31);")?;
+    out.writeln("let p = (NVIC_ICPR_BASE + idx * 4) as *mut u32;")?;
+    out.writeln("core::ptr::write_volatile(p, bit);")?;
+    out.dedent();
+    out.writeln("}")?;
+
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn is_active_irq(irq: u32) -> bool {")?;
+    out.indent();
+    out.writeln("let idx = (irq >> 5) as usize;")?;
+    out.writeln("let bit = 1u32 << (irq & 31);")?;
+    out.writeln("let p = (NVIC_IABR_BASE + idx * 4) as *const u32;")?;
+    out.writeln("(core::ptr::read_volatile(p) & bit) != 0")?;
+    out.dedent();
+    out.writeln("}")?;
+
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn set_priority(irq: u32, prio: u8) {")?;
+    out.indent();
+    out.writeln("let prio_bits = PRIO_BITS.min(8);")?;
+    out.writeln("let shift = 8u8.saturating_sub(prio_bits);")?;
+    out.writeln(
+        "let mask = if prio_bits == 8 { 0xFFu8 } else { ((1u16 << prio_bits) - 1) as u8 };",
+    )?;
+    out.writeln("let v = (prio & mask) << shift;")?;
+    out.writeln("let p = (NVIC_IPR_BASE + irq as usize) as *mut u8;")?;
+    out.writeln("core::ptr::write_volatile(p, v);")?;
+    out.dedent();
+    out.writeln("}")?;
+
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn software_trigger(irq: u32) {")?;
+    out.indent();
+    out.writeln("let p = NVIC_STIR as *mut u32;")?;
+    out.writeln("core::ptr::write_volatile(p, irq & 0x1FF);")?;
+    out.dedent();
+    out.writeln("}")?;
+
+    if !irqs.is_empty() {
+        out.writeln("")?;
+        out.writeln("#[inline(always)]")?;
+        out.writeln("pub unsafe fn enable(irq: super::Interrupt) { enable_irq(irq as u32) }")?;
+        out.writeln("#[inline(always)]")?;
+        out.writeln("pub unsafe fn disable(irq: super::Interrupt) { disable_irq(irq as u32) }")?;
+        out.writeln("#[inline(always)]")?;
+        out.writeln("pub unsafe fn pend(irq: super::Interrupt) { pend_irq(irq as u32) }")?;
+        out.writeln("#[inline(always)]")?;
+        out.writeln("pub unsafe fn unpend(irq: super::Interrupt) { unpend_irq(irq as u32) }")?;
+        out.writeln("#[inline(always)]")?;
+        out.writeln(
+            "pub unsafe fn is_active(irq: super::Interrupt) -> bool { is_active_irq(irq as u32) }",
+        )?;
+        out.writeln("#[inline(always)]")?;
+        out.writeln("pub unsafe fn set_priority_for(irq: super::Interrupt, prio: u8) { set_priority(irq as u32, prio) }")?;
+        out.writeln("#[inline(always)]")?;
+        out.writeln("pub unsafe fn software_trigger_for(irq: super::Interrupt) { software_trigger(irq as u32) }")?;
+    }
+
+    out.dedent();
+    out.writeln("}")?;
+    Ok(())
 }
 
 /// Write the generated device file into a directory.
@@ -2110,20 +2248,6 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.dedent();
     out.writeln("];")?;
     out.writeln("")?;
-
-    // Interrupt enum for convenience.
-    out.writeln("#[repr(u16)]")?;
-    out.writeln("#[derive(Copy, Clone, Debug, PartialEq, Eq)]")?;
-    out.writeln("pub enum Interrupt {")?;
-    out.indent();
-    for (n, name, desc) in &irqs {
-        if let Some(d) = desc {
-            out.writeln(&format!("/// {}", doc_escape(d)))?;
-        }
-        out.writeln(&format!("{name} = {n},",))?;
-    }
-    out.dedent();
-    out.writeln("}")?;
 
     Ok(out.s)
 }
