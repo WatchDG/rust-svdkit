@@ -92,6 +92,7 @@ impl GpioPortInfo {
 
         s.push_str("        pub struct InputMode;\n");
         s.push_str("        pub struct OutputMode;\n\n");
+        s.push_str("        pub struct UnknownMode;\n\n");
 
         s.push_str("        #[inline(always)]\n");
         s.push_str("        pub unsafe fn steal() -> &'static Port {\n");
