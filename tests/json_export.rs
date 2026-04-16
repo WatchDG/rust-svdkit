@@ -1,6 +1,6 @@
 #[cfg(feature = "json")]
 mod json_export {
-    use svdkit::{svd, device_to_json_pretty};
+    use svdkit::{device_to_json_pretty, svd};
 
     #[test]
     fn device_to_json_contains_name() {
@@ -27,4 +27,3 @@ mod json_export {
         assert!(s.contains("\"name\": \"JSON_GOLDEN\""));
     }
 }
-

@@ -63,7 +63,10 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
     generate_device_rs_with_options(device, PacOptions::full())
 }
 
-pub fn generate_device_rs_with_options(device: &svd::Device, options: PacOptions) -> Result<String> {
+pub fn generate_device_rs_with_options(
+    device: &svd::Device,
+    options: PacOptions,
+) -> Result<String> {
     let mut out = CodeWriter::new();
     let mut type_defs = CodeWriter::new();
     let mut enum_defs = CodeWriter::new();
@@ -84,12 +87,72 @@ pub fn generate_device_rs_with_options(device: &svd::Device, options: PacOptions
     out.writeln("use core::cell::UnsafeCell;")?;
     out.writeln("use core::marker::PhantomData;")?;
     out.writeln("")?;
+    out.writeln("pub trait RegValue: Copy {")?;
+    out.indent();
+    out.writeln("const BITS: u32;")?;
+    out.writeln("const MASK: u64;")?;
+    out.writeln("fn to_u64(self) -> u64;")?;
+    out.writeln("fn from_u64(v: u64) -> Self;")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
+    out.writeln("impl RegValue for u8 {")?;
+    out.indent();
+    out.writeln("const BITS: u32 = 8;")?;
+    out.writeln("const MASK: u64 = 0xFFu64;")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("fn to_u64(self) -> u64 { self as u64 }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("fn from_u64(v: u64) -> Self { v as u8 }")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("impl RegValue for u16 {")?;
+    out.indent();
+    out.writeln("const BITS: u32 = 16;")?;
+    out.writeln("const MASK: u64 = 0xFFFFu64;")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("fn to_u64(self) -> u64 { self as u64 }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("fn from_u64(v: u64) -> Self { v as u16 }")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("impl RegValue for u32 {")?;
+    out.indent();
+    out.writeln("const BITS: u32 = 32;")?;
+    out.writeln("const MASK: u64 = 0xFFFF_FFFFu64;")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("fn to_u64(self) -> u64 { self as u64 }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("fn from_u64(v: u64) -> Self { v as u32 }")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("impl RegValue for u64 {")?;
+    out.indent();
+    out.writeln("const BITS: u32 = 64;")?;
+    out.writeln("const MASK: u64 = 0xFFFF_FFFF_FFFF_FFFFu64;")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("fn to_u64(self) -> u64 { self }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("fn from_u64(v: u64) -> Self { v }")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
     out.writeln("#[repr(transparent)]")?;
     out.writeln("pub struct RO<T>(UnsafeCell<T>);")?;
     out.writeln("#[repr(transparent)]")?;
     out.writeln("pub struct WO<T>(UnsafeCell<T>);")?;
     out.writeln("#[repr(transparent)]")?;
     out.writeln("pub struct RW<T>(UnsafeCell<T>);")?;
+    out.writeln("#[repr(transparent)]")?;
+    out.writeln("pub struct W1S<T>(UnsafeCell<T>);")?;
+    out.writeln("#[repr(transparent)]")?;
+    out.writeln("pub struct W1C<T>(UnsafeCell<T>);")?;
+    out.writeln("#[repr(transparent)]")?;
+    out.writeln("pub struct W0S<T>(UnsafeCell<T>);")?;
+    out.writeln("#[repr(transparent)]")?;
+    out.writeln("pub struct W0C<T>(UnsafeCell<T>);")?;
+    out.writeln("#[repr(transparent)]")?;
+    out.writeln("pub struct WT<T>(UnsafeCell<T>);")?;
     out.writeln("")?;
     out.writeln("unsafe impl<T> Send for RO<T> {}")?;
     out.writeln("unsafe impl<T> Sync for RO<T> {}")?;
@@ -97,6 +160,16 @@ pub fn generate_device_rs_with_options(device: &svd::Device, options: PacOptions
     out.writeln("unsafe impl<T> Sync for WO<T> {}")?;
     out.writeln("unsafe impl<T> Send for RW<T> {}")?;
     out.writeln("unsafe impl<T> Sync for RW<T> {}")?;
+    out.writeln("unsafe impl<T> Send for W1S<T> {}")?;
+    out.writeln("unsafe impl<T> Sync for W1S<T> {}")?;
+    out.writeln("unsafe impl<T> Send for W1C<T> {}")?;
+    out.writeln("unsafe impl<T> Sync for W1C<T> {}")?;
+    out.writeln("unsafe impl<T> Send for W0S<T> {}")?;
+    out.writeln("unsafe impl<T> Sync for W0S<T> {}")?;
+    out.writeln("unsafe impl<T> Send for W0C<T> {}")?;
+    out.writeln("unsafe impl<T> Sync for W0C<T> {}")?;
+    out.writeln("unsafe impl<T> Send for WT<T> {}")?;
+    out.writeln("unsafe impl<T> Sync for WT<T> {}")?;
     out.writeln("")?;
     out.writeln("impl<T: Copy> RO<T> {")?;
     out.indent();
@@ -122,6 +195,83 @@ pub fn generate_device_rs_with_options(device: &svd::Device, options: PacOptions
     out.writeln(
         "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
     )?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
+    out.writeln("impl<T: RegValue> W1S<T> {")?;
+    out.indent();
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln(
+        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
+    )?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn set_bits(&self, mask: T) { self.write(mask) }")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
+    out.writeln("impl<T: RegValue> W1C<T> {")?;
+    out.indent();
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln(
+        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
+    )?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn clear_bits(&self, mask: T) { self.write(mask) }")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
+    out.writeln("impl<T: RegValue> W0S<T> {")?;
+    out.indent();
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln(
+        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
+    )?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn set_bits(&self, mask: T) {")?;
+    out.indent();
+    out.writeln("let m = mask.to_u64() & T::MASK;")?;
+    out.writeln("let v = (!m) & T::MASK;")?;
+    out.writeln("self.write(T::from_u64(v));")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
+    out.writeln("impl<T: RegValue> W0C<T> {")?;
+    out.indent();
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln(
+        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
+    )?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn clear_bits(&self, mask: T) {")?;
+    out.indent();
+    out.writeln("let m = mask.to_u64() & T::MASK;")?;
+    out.writeln("let v = (!m) & T::MASK;")?;
+    out.writeln("self.write(T::from_u64(v));")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
+    out.writeln("impl<T: RegValue> WT<T> {")?;
+    out.indent();
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln(
+        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
+    )?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub fn toggle_bits(&self, mask: T) { self.write(mask) }")?;
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
@@ -789,7 +939,7 @@ fn emit_register_field(
     options: PacOptions,
 ) -> Result<()> {
     let (base_ty, size_bytes) = reg_primitive_ty_and_size(ctx, &r.properties);
-    let access = resolve_access(ctx, &r.properties);
+    let access = resolve_access(ctx, r);
     let reg_ty = register_wrapper_type(st, type_defs, ctx, r, &base_ty, access, options)?;
     if let Some(dim) = &r.dim {
         // Only emit as `[T; dim]` if the increment matches the element size.
@@ -821,7 +971,8 @@ fn emit_cluster_field(
     c: &svd::Cluster,
     options: PacOptions,
 ) -> Result<()> {
-    let (cluster_ty, cluster_size_bytes) = cluster_rust_type_and_size(st, type_defs, ctx, c, options)?;
+    let (cluster_ty, cluster_size_bytes) =
+        cluster_rust_type_and_size(st, type_defs, ctx, c, options)?;
     if let Some(dim) = &c.dim {
         if dim.dim_increment == cluster_size_bytes {
             out.writeln(&format!(
@@ -962,7 +1113,7 @@ fn cluster_layout_fingerprint(ctx: &Ctx<'_>, c: &svd::Cluster) -> String {
     for it in sorted {
         match it {
             svd::RegisterBlockItem::Register { register } => {
-                let access = resolve_access(ctx, &register.properties);
+                let access = resolve_access_type(ctx, &register.properties);
                 let (_base_ty, bytes) = reg_primitive_ty_and_size(ctx, &register.properties);
                 let dim_sig = register
                     .dim
@@ -1049,7 +1200,23 @@ fn reg_primitive_ty_and_size(ctx: &Ctx<'_>, leaf_props: &svd::RegisterProperties
     (base_ty.to_string(), bytes)
 }
 
-fn resolve_access(ctx: &Ctx<'_>, leaf_props: &svd::RegisterProperties) -> svd::AccessType {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegWriteModel {
+    Normal,
+    W1S,
+    W1C,
+    W0S,
+    W0C,
+    WT,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ResolvedAccess {
+    access: svd::AccessType,
+    write_model: RegWriteModel,
+}
+
+fn resolve_access_type(ctx: &Ctx<'_>, leaf_props: &svd::RegisterProperties) -> svd::AccessType {
     // Priority (spec-ish): leaf -> nearest cluster -> peripheral -> device defaults -> ReadWrite.
     if let Some(v) = leaf_props.access {
         return v;
@@ -1081,6 +1248,190 @@ fn resolve_access(ctx: &Ctx<'_>, leaf_props: &svd::RegisterProperties) -> svd::A
         return v;
     }
     svd::AccessType::ReadWrite
+}
+
+fn resolve_access(ctx: &Ctx<'_>, r: &svd::Register) -> ResolvedAccess {
+    let access = resolve_access_type(ctx, &r.properties);
+    if matches!(access, svd::AccessType::ReadOnly) {
+        return ResolvedAccess {
+            access,
+            write_model: RegWriteModel::Normal,
+        };
+    }
+
+    if resolve_write_as_read(ctx, r) {
+        return ResolvedAccess {
+            access,
+            write_model: RegWriteModel::Normal,
+        };
+    }
+
+    let mwv = resolve_modified_write_values(ctx, r);
+    let write_model = match mwv {
+        Some(svd::ModifiedWriteValues::OneToSet) => RegWriteModel::W1S,
+        Some(svd::ModifiedWriteValues::OneToClear) => RegWriteModel::W1C,
+        Some(svd::ModifiedWriteValues::ZeroToSet) => RegWriteModel::W0S,
+        Some(svd::ModifiedWriteValues::ZeroToClear) => RegWriteModel::W0C,
+        Some(svd::ModifiedWriteValues::OneToToggle) => RegWriteModel::WT,
+        _ => RegWriteModel::Normal,
+    };
+
+    ResolvedAccess {
+        access,
+        write_model,
+    }
+}
+
+fn resolve_write_as_read(ctx: &Ctx<'_>, r: &svd::Register) -> bool {
+    let mut cur = r;
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    loop {
+        if matches!(
+            cur.write_constraint,
+            Some(svd::WriteConstraint::WriteAsRead {
+                write_as_read: true
+            })
+        ) {
+            return true;
+        }
+        if cur.field.iter().any(|f| {
+            matches!(
+                f.write_constraint,
+                Some(svd::WriteConstraint::WriteAsRead {
+                    write_as_read: true
+                })
+            )
+        }) {
+            return true;
+        }
+
+        let Some(df) = cur.derived_from.as_deref() else {
+            return false;
+        };
+        let cur_key = ctx_reg_path(ctx, &cur.name);
+        if !seen.insert(cur_key) {
+            return false;
+        }
+        let Some(next) = find_register_in_ctx(ctx, df) else {
+            return false;
+        };
+        cur = next;
+    }
+}
+
+fn resolve_modified_write_values(
+    ctx: &Ctx<'_>,
+    r: &svd::Register,
+) -> Option<svd::ModifiedWriteValues> {
+    let mut cur = r;
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    loop {
+        if let Some(mwv) = cur.modified_write_values {
+            if mwv != svd::ModifiedWriteValues::Modify {
+                return Some(mwv);
+            }
+        }
+
+        let mut picked: Option<svd::ModifiedWriteValues> = None;
+        let mut conflict = false;
+        for f in &cur.field {
+            let Some(mwv) = f.modified_write_values else {
+                continue;
+            };
+            if mwv == svd::ModifiedWriteValues::Modify {
+                continue;
+            }
+            match picked {
+                None => picked = Some(mwv),
+                Some(p) if p == mwv => {}
+                Some(_) => {
+                    conflict = true;
+                    break;
+                }
+            }
+        }
+        if !conflict {
+            if let Some(p) = picked {
+                return Some(p);
+            }
+        }
+
+        let Some(df) = cur.derived_from.as_deref() else {
+            return None;
+        };
+        let cur_key = ctx_reg_path(ctx, &cur.name);
+        if !seen.insert(cur_key) {
+            return None;
+        }
+        let Some(next) = find_register_in_ctx(ctx, df) else {
+            return None;
+        };
+        cur = next;
+    }
+}
+
+fn find_register_in_ctx<'a>(ctx: &Ctx<'a>, derived_from: &str) -> Option<&'a svd::Register> {
+    let Some(p) = ctx.periph else {
+        return None;
+    };
+    let items = peripheral_register_items(ctx.device, p);
+
+    let mut prefix = String::new();
+    for (i, c) in ctx.cluster_stack.iter().enumerate() {
+        if i > 0 {
+            prefix.push('.');
+        }
+        prefix.push_str(&c.name);
+    }
+
+    let mut candidates: Vec<String> = Vec::new();
+    if derived_from.contains('.') {
+        candidates.push(derived_from.to_string());
+    } else {
+        if !prefix.is_empty() {
+            candidates.push(format!("{prefix}.{derived_from}"));
+        }
+        candidates.push(derived_from.to_string());
+    }
+
+    for c in candidates {
+        if let Some(r) = find_register_by_path(items, &c, "") {
+            return Some(r);
+        }
+    }
+    None
+}
+
+fn find_register_by_path<'a>(
+    items: &'a [svd::RegisterBlockItem],
+    target: &str,
+    prefix: &str,
+) -> Option<&'a svd::Register> {
+    for it in items {
+        match it {
+            svd::RegisterBlockItem::Register { register } => {
+                let p = if prefix.is_empty() {
+                    register.name.clone()
+                } else {
+                    format!("{prefix}.{}", register.name)
+                };
+                if p == target {
+                    return Some(register);
+                }
+            }
+            svd::RegisterBlockItem::Cluster { cluster } => {
+                let pfx = if prefix.is_empty() {
+                    cluster.name.clone()
+                } else {
+                    format!("{prefix}.{}", cluster.name)
+                };
+                if let Some(r) = find_register_by_path(cluster.items.as_slice(), target, &pfx) {
+                    return Some(r);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn resolve_reset(ctx: &Ctx<'_>, leaf_props: &svd::RegisterProperties) -> Option<(u64, u64)> {
@@ -1198,8 +1549,11 @@ fn emit_reset_stmts_for_items(
                     continue;
                 };
                 // Only if it is write-capable.
-                let access = resolve_access(ctx, &register.properties);
-                if matches!(access, svd::AccessType::ReadOnly) {
+                let access = resolve_access(ctx, register);
+                if matches!(access.access, svd::AccessType::ReadOnly) {
+                    continue;
+                }
+                if access.write_model != RegWriteModel::Normal {
                     continue;
                 }
 
@@ -1274,7 +1628,7 @@ fn collect_once_regs(
     for it in sorted {
         match it {
             svd::RegisterBlockItem::Register { register } => {
-                let access = resolve_access(ctx, &register.properties);
+                let access = resolve_access(ctx, register).access;
                 let (base_ty, _) = reg_primitive_ty_and_size(ctx, &register.properties);
                 let (token_ctor, token_single_ty) = match access {
                     svd::AccessType::WriteOnce => (
@@ -1590,7 +1944,7 @@ fn register_wrapper_type(
     ctx: &Ctx<'_>,
     r: &svd::Register,
     base_ty: &str,
-    access: svd::AccessType,
+    access: ResolvedAccess,
     options: PacOptions,
 ) -> Result<String> {
     // Base name: <PERIPH>_<CLUSTERS>_<REG>
@@ -1599,7 +1953,10 @@ fn register_wrapper_type(
     let base = sanitize_type_name(&format!("{}_{}", periph, reg_path.replace('.', "_")));
 
     // Fingerprint: access + base type + field layout + enum bindings.
-    let mut fp = format!("A={access:?}|T={base_ty}|");
+    let mut fp = format!(
+        "A={:?}|WM={:?}|T={base_ty}|",
+        access.access, access.write_model
+    );
     for (i, f) in r.field.iter().enumerate() {
         let (lsb, width) = field_lsb_width(f);
         fp.push_str(&format!("F{i}:{}:{}:{}|", f.name, lsb, width));
@@ -1627,10 +1984,42 @@ fn register_wrapper_type(
     }
 
     // Underlying storage type (layout-critical).
-    let inner = match access {
-        svd::AccessType::ReadOnly => format!("RO<{base_ty}>"),
-        svd::AccessType::WriteOnly | svd::AccessType::WriteOnce => format!("WO<{base_ty}>"),
-        svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce => format!("RW<{base_ty}>"),
+    let inner = match (access.access, access.write_model) {
+        (svd::AccessType::ReadOnly, _) => format!("RO<{base_ty}>"),
+        (svd::AccessType::WriteOnly | svd::AccessType::WriteOnce, RegWriteModel::W1S) => {
+            format!("W1S<{base_ty}>")
+        }
+        (svd::AccessType::WriteOnly | svd::AccessType::WriteOnce, RegWriteModel::W1C) => {
+            format!("W1C<{base_ty}>")
+        }
+        (svd::AccessType::WriteOnly | svd::AccessType::WriteOnce, RegWriteModel::W0S) => {
+            format!("W0S<{base_ty}>")
+        }
+        (svd::AccessType::WriteOnly | svd::AccessType::WriteOnce, RegWriteModel::W0C) => {
+            format!("W0C<{base_ty}>")
+        }
+        (svd::AccessType::WriteOnly | svd::AccessType::WriteOnce, RegWriteModel::WT) => {
+            format!("WT<{base_ty}>")
+        }
+        (svd::AccessType::WriteOnly | svd::AccessType::WriteOnce, _) => format!("WO<{base_ty}>"),
+        (svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce, RegWriteModel::W1S) => {
+            format!("W1S<{base_ty}>")
+        }
+        (svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce, RegWriteModel::W1C) => {
+            format!("W1C<{base_ty}>")
+        }
+        (svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce, RegWriteModel::W0S) => {
+            format!("W0S<{base_ty}>")
+        }
+        (svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce, RegWriteModel::W0C) => {
+            format!("W0C<{base_ty}>")
+        }
+        (svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce, RegWriteModel::WT) => {
+            format!("WT<{base_ty}>")
+        }
+        (svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce, _) => {
+            format!("RW<{base_ty}>")
+        }
     };
 
     out.writeln(&format!("/// Register `{}`", reg_path))?;
@@ -1644,7 +2033,7 @@ fn register_wrapper_type(
     out.writeln(&format!("impl {ty} {{"))?;
     out.indent();
     if matches!(
-        access,
+        access.access,
         svd::AccessType::ReadOnly | svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce
     ) {
         out.writeln("#[inline(always)]")?;
@@ -1653,7 +2042,7 @@ fn register_wrapper_type(
         ))?;
     }
     if matches!(
-        access,
+        access.access,
         svd::AccessType::WriteOnly
             | svd::AccessType::WriteOnce
             | svd::AccessType::ReadWrite
@@ -1663,6 +2052,33 @@ fn register_wrapper_type(
         out.writeln(&format!(
             "pub fn write(&self, v: {base_ty}) {{ self.0.write(v) }}"
         ))?;
+    }
+    match access.write_model {
+        RegWriteModel::W1S | RegWriteModel::W0S => {
+            if !matches!(access.access, svd::AccessType::ReadOnly) {
+                out.writeln("#[inline(always)]")?;
+                out.writeln(&format!(
+                    "pub fn set_bits(&self, mask: {base_ty}) {{ self.0.set_bits(mask) }}"
+                ))?;
+            }
+        }
+        RegWriteModel::W1C | RegWriteModel::W0C => {
+            if !matches!(access.access, svd::AccessType::ReadOnly) {
+                out.writeln("#[inline(always)]")?;
+                out.writeln(&format!(
+                    "pub fn clear_bits(&self, mask: {base_ty}) {{ self.0.clear_bits(mask) }}"
+                ))?;
+            }
+        }
+        RegWriteModel::WT => {
+            if !matches!(access.access, svd::AccessType::ReadOnly) {
+                out.writeln("#[inline(always)]")?;
+                out.writeln(&format!(
+                    "pub fn toggle_bits(&self, mask: {base_ty}) {{ self.0.toggle_bits(mask) }}"
+                ))?;
+            }
+        }
+        RegWriteModel::Normal => {}
     }
 
     // Field enum helpers.
@@ -1727,7 +2143,7 @@ fn register_wrapper_type(
             if let Some((_idx, enum_ty)) = &read_pick {
                 // Require readable register.
                 if matches!(
-                    access,
+                    access.access,
                     svd::AccessType::ReadOnly
                         | svd::AccessType::ReadWrite
                         | svd::AccessType::ReadWriteOnce
@@ -1752,7 +2168,7 @@ fn register_wrapper_type(
             // Write helpers.
             if let Some((_idx, enum_ty)) = &write_pick {
                 // Field access can restrict writing.
-                let field_access = f.access.unwrap_or(access);
+                let field_access = f.access.unwrap_or(access.access);
                 let writable = !matches!(field_access, svd::AccessType::ReadOnly);
                 if !writable {
                     continue;
@@ -1760,9 +2176,10 @@ fn register_wrapper_type(
 
                 // Prefer RMW only for readable+writeable (RW).
                 if matches!(
-                    access,
+                    access.access,
                     svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce
-                ) {
+                ) && access.write_model == RegWriteModel::Normal
+                {
                     let set_name = if read_pick.as_ref().map(|x| &x.1) == Some(enum_ty) {
                         format!("set_{method_base}")
                     } else {
@@ -1782,32 +2199,84 @@ fn register_wrapper_type(
                     out.writeln(&format!("self.write(new as {base_ty});"))?;
                     out.dedent();
                     out.writeln("}")?;
-                } else if matches!(
-                    access,
-                    svd::AccessType::WriteOnly | svd::AccessType::WriteOnce
-                ) {
-                    // For WO registers we cannot do RMW, but we *can* still provide
-                    // field-level helpers that write only this field and zero all
-                    // other bits. This matches common CMSIS-SVD semantics where
-                    // un-described bits are "reserved" and should be written as 0
-                    // (e.g. Nordic TASKS_* registers where bit0 is a 1-bit trigger).
-                    let set_name = format!("write_{method_base}");
+                } else {
+                    let method_name = if matches!(
+                        access.access,
+                        svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce
+                    ) {
+                        if read_pick.as_ref().map(|x| &x.1) == Some(enum_ty) {
+                            format!("set_{method_base}")
+                        } else {
+                            format!("set_{method_base}_write")
+                        }
+                    } else {
+                        format!("write_{method_base}")
+                    };
+
+                    let call = match (access.access, access.write_model) {
+                        (
+                            svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce,
+                            RegWriteModel::W1S,
+                        )
+                        | (
+                            svd::AccessType::WriteOnly | svd::AccessType::WriteOnce,
+                            RegWriteModel::W1S,
+                        ) => "set_bits",
+                        (
+                            svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce,
+                            RegWriteModel::W0S,
+                        )
+                        | (
+                            svd::AccessType::WriteOnly | svd::AccessType::WriteOnce,
+                            RegWriteModel::W0S,
+                        ) => "set_bits",
+                        (
+                            svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce,
+                            RegWriteModel::W1C,
+                        )
+                        | (
+                            svd::AccessType::WriteOnly | svd::AccessType::WriteOnce,
+                            RegWriteModel::W1C,
+                        ) => "clear_bits",
+                        (
+                            svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce,
+                            RegWriteModel::W0C,
+                        )
+                        | (
+                            svd::AccessType::WriteOnly | svd::AccessType::WriteOnce,
+                            RegWriteModel::W0C,
+                        ) => "clear_bits",
+                        (
+                            svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce,
+                            RegWriteModel::WT,
+                        )
+                        | (
+                            svd::AccessType::WriteOnly | svd::AccessType::WriteOnce,
+                            RegWriteModel::WT,
+                        ) => "toggle_bits",
+                        (
+                            svd::AccessType::WriteOnly | svd::AccessType::WriteOnce,
+                            RegWriteModel::Normal,
+                        ) => "write",
+                        _ => {
+                            continue;
+                        }
+                    };
+
                     out.writeln("")?;
                     out.writeln("#[inline(always)]")?;
-                    if lsb == 0 && (width as u64) == reg_bits {
-                        out.writeln(&format!(
-                            "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{ self.write(v.bits() as {base_ty}); }}"
-                        ))?;
+                    out.writeln(&format!(
+                        "pub fn {method_name}(&self, v: field_enums::{enum_ty}) {{"
+                    ))?;
+                    out.indent();
+                    if call == "write" && lsb == 0 && (width as u64) == reg_bits {
+                        out.writeln(&format!("self.write(v.bits() as {base_ty});"))?;
                     } else {
-                        out.writeln(&format!(
-                            "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{"
-                        ))?;
-                        out.indent();
                         out.writeln(&format!("let v = (v.bits() as u64) & 0x{mask:X}u64;"))?;
-                        out.writeln(&format!("self.write(((v << {lsb}) as {base_ty}));"))?;
-                        out.dedent();
-                        out.writeln("}")?;
+                        out.writeln(&format!("self.{call}(((v << {lsb}) as {base_ty}));"))?;
                     }
+                    out.dedent();
+                    out.writeln("}")?;
                 }
             }
         }
