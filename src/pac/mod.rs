@@ -19,18 +19,51 @@ pub struct GeneratedFile {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PacOptions {
+    pub emit_field_enums: bool,
+    pub emit_field_methods: bool,
+}
+
+impl PacOptions {
+    pub const fn full() -> Self {
+        Self {
+            emit_field_enums: true,
+            emit_field_methods: true,
+        }
+    }
+
+    pub const fn minimal() -> Self {
+        Self {
+            emit_field_enums: false,
+            emit_field_methods: false,
+        }
+    }
+}
+
 /// Generate a single Rust file that represents the whole device.
 ///
 /// The resulting file name is derived from `device.name` and ends with `.rs`.
 pub fn generate_device_file(device: &svd::Device) -> Result<GeneratedFile> {
+    generate_device_file_with_options(device, PacOptions::full())
+}
+
+pub fn generate_device_file_with_options(
+    device: &svd::Device,
+    options: PacOptions,
+) -> Result<GeneratedFile> {
     let file_stem = sanitize_file_stem(&device.name);
     let file_name = format!("{file_stem}_pac.rs");
-    let content = generate_device_rs(device)?;
+    let content = generate_device_rs_with_options(device, options)?;
     Ok(GeneratedFile { file_name, content })
 }
 
 /// Generate Rust code (as a string) for the whole device.
 pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
+    generate_device_rs_with_options(device, PacOptions::full())
+}
+
+pub fn generate_device_rs_with_options(device: &svd::Device, options: PacOptions) -> Result<String> {
     let mut out = CodeWriter::new();
     let mut type_defs = CodeWriter::new();
     let mut enum_defs = CodeWriter::new();
@@ -156,7 +189,9 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
     // Enumerations for fields with enumeratedValue blocks.
     // We emit them later in the file for readability, but we collect them here so
     // register wrapper types can reference the final enum type names.
-    emit_enums(device, &mut st, &mut enum_defs)?;
+    if options.emit_field_enums {
+        emit_enums(device, &mut st, &mut enum_defs)?;
+    }
 
     // Keep deterministic order.
     let mut periphs = device.peripherals.clone();
@@ -178,7 +213,7 @@ pub fn generate_device_rs(device: &svd::Device) -> Result<String> {
 
     // Types + pointers.
     for p in &periphs {
-        generate_peripheral(&mut st, &mut out, &mut type_defs, device, p)?;
+        generate_peripheral(&mut st, &mut out, &mut type_defs, device, p, options)?;
         out.writeln("")?;
     }
 
@@ -559,6 +594,7 @@ fn generate_peripheral(
     type_defs: &mut CodeWriter,
     device: &svd::Device,
     p: &svd::Peripheral,
+    options: PacOptions,
 ) -> Result<()> {
     let mod_name = sanitize_module_name(&p.name);
     let base_const_root = format!("{}_BASE", sanitize_const_name(&p.name));
@@ -585,13 +621,21 @@ fn generate_peripheral(
         cluster_stack: Vec::new(),
     };
 
-    emit_register_block_items(st, &mut mod_out, type_defs, &ctx, items, 0)?;
+    emit_register_block_items(st, &mut mod_out, type_defs, &ctx, items, 0, options)?;
 
     mod_out.dedent();
     mod_out.writeln("}")?;
 
     // Reset implementation (best-effort, based on SVD resetValue/resetMask).
-    emit_reset_impl_for_struct(&mut mod_out, st, type_defs, &ctx, items, "RegisterBlock")?;
+    emit_reset_impl_for_struct(
+        &mut mod_out,
+        st,
+        type_defs,
+        &ctx,
+        items,
+        "RegisterBlock",
+        options,
+    )?;
 
     // Raw pointers.
     mod_out.writeln(&format!(
@@ -668,6 +712,7 @@ fn emit_register_block_items(
     ctx: &Ctx<'_>,
     items: &[svd::RegisterBlockItem],
     base_offset: u64,
+    options: PacOptions,
 ) -> Result<u64> {
     // Deterministic and layout-correct order by offset.
     let mut sorted: Vec<&svd::RegisterBlockItem> = items.iter().collect();
@@ -692,8 +737,8 @@ fn emit_register_block_items(
                 )
             }
             svd::RegisterBlockItem::Cluster { cluster } => {
-                let (cluster_ty, cluster_sz) =
-                    cluster_rust_type_and_size(st, type_defs, ctx, cluster)?;
+                let (_cluster_ty, cluster_sz) =
+                    cluster_rust_type_and_size(st, type_defs, ctx, cluster, options)?;
                 let item_sz = cluster_item_total_size_bytes(cluster, cluster_sz);
                 (
                     sanitize_field_name(&cluster.name),
@@ -721,10 +766,10 @@ fn emit_register_block_items(
         // Emit actual field.
         match it {
             svd::RegisterBlockItem::Register { register } => {
-                emit_register_field(st, out, type_defs, ctx, &name, register)?;
+                emit_register_field(st, out, type_defs, ctx, &name, register, options)?;
             }
             svd::RegisterBlockItem::Cluster { cluster } => {
-                emit_cluster_field(st, out, type_defs, ctx, &name, cluster)?;
+                emit_cluster_field(st, out, type_defs, ctx, &name, cluster, options)?;
             }
         }
 
@@ -741,10 +786,11 @@ fn emit_register_field(
     ctx: &Ctx<'_>,
     field_name: &str,
     r: &svd::Register,
+    options: PacOptions,
 ) -> Result<()> {
     let (base_ty, size_bytes) = reg_primitive_ty_and_size(ctx, &r.properties);
     let access = resolve_access(ctx, &r.properties);
-    let reg_ty = register_wrapper_type(st, type_defs, ctx, r, &base_ty, access)?;
+    let reg_ty = register_wrapper_type(st, type_defs, ctx, r, &base_ty, access, options)?;
     if let Some(dim) = &r.dim {
         // Only emit as `[T; dim]` if the increment matches the element size.
         if dim.dim_increment == size_bytes {
@@ -773,8 +819,9 @@ fn emit_cluster_field(
     ctx: &Ctx<'_>,
     field_name: &str,
     c: &svd::Cluster,
+    options: PacOptions,
 ) -> Result<()> {
-    let (cluster_ty, cluster_size_bytes) = cluster_rust_type_and_size(st, type_defs, ctx, c)?;
+    let (cluster_ty, cluster_size_bytes) = cluster_rust_type_and_size(st, type_defs, ctx, c, options)?;
     if let Some(dim) = &c.dim {
         if dim.dim_increment == cluster_size_bytes {
             out.writeln(&format!(
@@ -816,6 +863,7 @@ fn cluster_rust_type_and_size(
     type_defs: &mut CodeWriter,
     ctx: &Ctx<'_>,
     c: &svd::Cluster,
+    options: PacOptions,
 ) -> Result<(String, u64)> {
     // Dedup strategy:
     // - Prefer reusing the same Rust type for clusters with the same (name, layout).
@@ -852,7 +900,8 @@ fn cluster_rust_type_and_size(
         // into `type_defs`.
         let mut body = CodeWriter::new();
         body.indent();
-        let end = emit_register_block_items(st, &mut body, type_defs, &child_ctx, &c.items, 0)?;
+        let end =
+            emit_register_block_items(st, &mut body, type_defs, &child_ctx, &c.items, 0, options)?;
 
         type_defs.writeln(&format!("/// Cluster `{}`", c.name))?;
         type_defs.writeln("#[repr(C)]")?;
@@ -865,7 +914,15 @@ fn cluster_rust_type_and_size(
         // Note: we must not borrow `type_defs` mutably twice, so we generate the impl
         // into a temporary writer while nested cluster type defs still go into `type_defs`.
         let mut impl_out = CodeWriter::new();
-        emit_reset_impl_for_struct(&mut impl_out, st, type_defs, &child_ctx, &c.items, &ty)?;
+        emit_reset_impl_for_struct(
+            &mut impl_out,
+            st,
+            type_defs,
+            &child_ctx,
+            &c.items,
+            &ty,
+            options,
+        )?;
         type_defs.s.push_str(&impl_out.s);
         type_defs.s.push('\n');
 
@@ -1099,6 +1156,7 @@ fn emit_reset_impl_for_struct(
     ctx: &Ctx<'_>,
     items: &[svd::RegisterBlockItem],
     ty: &str,
+    options: PacOptions,
 ) -> Result<()> {
     // Generate reset statements; if none, still emit empty reset() so callers can recurse.
     out.writeln(&format!("impl {ty} {{"))?;
@@ -1107,7 +1165,7 @@ fn emit_reset_impl_for_struct(
     out.writeln("pub fn reset(&self) {")?;
     out.indent();
 
-    emit_reset_stmts_for_items(out, st, type_defs, ctx, items, 0)?;
+    emit_reset_stmts_for_items(out, st, type_defs, ctx, items, 0, options)?;
 
     out.dedent();
     out.writeln("}")?;
@@ -1123,6 +1181,7 @@ fn emit_reset_stmts_for_items(
     ctx: &Ctx<'_>,
     items: &[svd::RegisterBlockItem],
     base_offset: u64,
+    options: PacOptions,
 ) -> Result<()> {
     // Deterministic order by offset.
     let mut sorted: Vec<&svd::RegisterBlockItem> = items.iter().collect();
@@ -1168,7 +1227,7 @@ fn emit_reset_stmts_for_items(
             svd::RegisterBlockItem::Cluster { cluster } => {
                 let field_name = sanitize_field_name(&cluster.name);
                 let (_cluster_ty, cluster_size_bytes) =
-                    cluster_rust_type_and_size(st, type_defs, ctx, cluster)?;
+                    cluster_rust_type_and_size(st, type_defs, ctx, cluster, options)?;
                 // Only if this cluster field was emitted as a typed struct/array.
                 if let Some(dim) = &cluster.dim {
                     if dim.dim_increment != cluster_size_bytes {
@@ -1532,6 +1591,7 @@ fn register_wrapper_type(
     r: &svd::Register,
     base_ty: &str,
     access: svd::AccessType,
+    options: PacOptions,
 ) -> Result<String> {
     // Base name: <PERIPH>_<CLUSTERS>_<REG>
     let periph = ctx.periph.map(|p| p.name.as_str()).unwrap_or("PERIPH");
@@ -1606,7 +1666,7 @@ fn register_wrapper_type(
     }
 
     // Field enum helpers.
-    if !r.field.is_empty() {
+    if options.emit_field_enums && options.emit_field_methods && !r.field.is_empty() {
         let reg_bits = (base_ty_bits(base_ty) as u64).max(1);
         let reg_path_key = ctx_reg_path(ctx, &r.name);
         let mut used_method: BTreeMap<String, usize> = BTreeMap::new();

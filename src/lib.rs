@@ -25,3 +25,15 @@ pub fn parse_svd_file(path: &std::path::Path) -> Result<svd::Device> {
     let xml = std::fs::read_to_string(path)?;
     parse_svd(&xml)
 }
+
+#[cfg(feature = "json")]
+pub fn device_to_json_pretty(device: &svd::Device) -> Result<String> {
+    serde_json::to_string_pretty(device).map_err(|e| Error::Json(e.to_string()))
+}
+
+#[cfg(feature = "json")]
+pub fn write_device_json_pretty(device: &svd::Device, out_path: &std::path::Path) -> Result<()> {
+    let s = device_to_json_pretty(device)?;
+    std::fs::write(out_path, s)?;
+    Ok(())
+}
