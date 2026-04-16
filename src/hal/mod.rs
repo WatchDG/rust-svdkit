@@ -494,16 +494,20 @@ struct TimerInfo {
 impl TimerInfo {
     fn render(&self) -> Result<String> {
         let mut s = String::new();
+        let timer_ty = sanitize_type_name(&self.periph_mod);
+        let builder_ty = format!("{timer_ty}Builder");
 
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type Timer = pac::{}::RegisterBlock;\n\n",
-            self.periph_mod
+            "        pub type {timer_ty} = pac::{}::RegisterBlock;\n\n",
+            self.periph_mod,
         ));
 
         s.push_str("        #[inline(always)]\n");
-        s.push_str("        pub unsafe fn steal() -> &'static Timer {\n");
+        s.push_str(&format!(
+            "        pub unsafe fn steal() -> &'static {timer_ty} {{\n"
+        ));
         s.push_str(&format!("            &*pac::{}::PTR\n", self.periph_mod));
         s.push_str("        }\n\n");
 
@@ -547,13 +551,15 @@ impl TimerInfo {
             "v"
         };
 
-        s.push_str("        pub struct TimerBuilder<'a> {\n");
-        s.push_str("            t: &'a Timer,\n");
+        s.push_str(&format!("        pub struct {builder_ty}<'a> {{\n"));
+        s.push_str(&format!("            t: &'a {timer_ty},\n"));
         s.push_str("        }\n\n");
 
-        s.push_str("        impl<'a> TimerBuilder<'a> {\n");
+        s.push_str(&format!("        impl<'a> {builder_ty}<'a> {{\n"));
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn new(t: &'a Timer) -> Self {\n");
+        s.push_str(&format!(
+            "            pub fn new(t: &'a {timer_ty}) -> Self {{\n"
+        ));
         s.push_str("                Self { t }\n");
         s.push_str("            }\n\n");
 
