@@ -1475,14 +1475,29 @@ fn register_wrapper_type(
                     access,
                     svd::AccessType::WriteOnly | svd::AccessType::WriteOnce
                 ) {
-                    // We can only safely write without RMW when the field covers the whole register.
+                    // For WO registers we cannot do RMW, but we *can* still provide
+                    // field-level helpers that write only this field and zero all
+                    // other bits. This matches common CMSIS-SVD semantics where
+                    // un-described bits are "reserved" and should be written as 0
+                    // (e.g. Nordic TASKS_* registers where bit0 is a 1-bit trigger).
+                    let set_name = format!("write_{method_base}");
+                    out.writeln("")?;
+                    out.writeln("#[inline(always)]")?;
                     if lsb == 0 && (width as u64) == reg_bits {
-                        let set_name = format!("write_{method_base}");
-                        out.writeln("")?;
-                        out.writeln("#[inline(always)]")?;
                         out.writeln(&format!(
                             "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{ self.write(v.bits() as {base_ty}); }}"
                         ))?;
+                    } else {
+                        out.writeln(&format!("pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{"))?;
+                        out.indent();
+                        out.writeln(&format!(
+                            "let v = (v.bits() as u64) & 0x{mask:X}u64;"
+                        ))?;
+                        out.writeln(&format!(
+                            "self.write(((v << {lsb}) as {base_ty}));"
+                        ))?;
+                        out.dedent();
+                        out.writeln("}")?;
                     }
                 }
             }
