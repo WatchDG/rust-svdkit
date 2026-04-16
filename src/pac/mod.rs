@@ -1953,6 +1953,30 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.writeln("use core::ptr;")?;
     out.writeln("")?;
 
+    // Small CPU helpers (no `cortex-m` crate required).
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn enable_interrupts() {")?;
+    out.indent();
+    out.writeln("#[cfg(target_arch = \"arm\")]")?;
+    out.writeln("core::arch::asm!(\"cpsie i\", options(nomem, nostack, preserves_flags));")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn disable_interrupts() {")?;
+    out.indent();
+    out.writeln("#[cfg(target_arch = \"arm\")]")?;
+    out.writeln("core::arch::asm!(\"cpsid i\", options(nomem, nostack, preserves_flags));")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn wait_for_interrupt() {")?;
+    out.indent();
+    out.writeln("#[cfg(target_arch = \"arm\")]")?;
+    out.writeln("core::arch::asm!(\"wfi\", options(nomem, nostack, preserves_flags));")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
+
     out.writeln("#[repr(C)]")?;
     out.writeln("pub union Vector {")?;
     out.indent();
