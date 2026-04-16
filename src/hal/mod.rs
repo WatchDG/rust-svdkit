@@ -113,6 +113,21 @@ impl GpioPortInfo {
         s.push_str("        pub struct OutputMode;\n\n");
         s.push_str("        pub struct UnknownMode;\n\n");
 
+        s.push_str("        pub trait GpioState {}\n");
+        s.push_str("        pub struct Unconfigured;\n");
+        s.push_str("        pub struct Configured;\n");
+        s.push_str("        pub struct Enabled;\n\n");
+        s.push_str("        impl GpioState for Unconfigured {}\n");
+        s.push_str("        impl GpioState for Configured {}\n");
+        s.push_str("        impl GpioState for Enabled {}\n\n");
+
+        s.push_str("        #[repr(u8)]\n");
+        s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("        pub enum Level {\n");
+        s.push_str("            Low = 0,\n");
+        s.push_str("            High = 1,\n");
+        s.push_str("        }\n\n");
+
         s.push_str("        #[inline(always)]\n");
         s.push_str(&format!(
             "        pub unsafe fn steal() -> &'static {port_ty} {{\n"
@@ -126,6 +141,8 @@ impl GpioPortInfo {
         let mut local_enums_src = String::new();
         let mut builder_methods_generic = String::new();
         let mut builder_methods_input_only = String::new();
+        let mut pull_exists = false;
+        let mut pull_has_ty = false;
 
         let input_disconnect = self
             .pin_fields
@@ -167,6 +184,11 @@ impl GpioPortInfo {
                     false
                 };
 
+                if fname.eq_ignore_ascii_case("PULL") {
+                    pull_exists = true;
+                    pull_has_ty = has_enum;
+                }
+
                 let setter = render_builder_setter(
                     &self.field_pin_cnf,
                     fname,
@@ -191,6 +213,10 @@ impl GpioPortInfo {
             all.push_str(&local_enums_src);
             s.push_str(&indent_block(&all, 8));
             s.push('\n');
+        }
+
+        if pull_exists && !pull_has_ty {
+            s.push_str("        pub type Pull = u32;\n\n");
         }
 
         // Pin + builder (typestate: InputMode/OutputMode).
@@ -266,6 +292,87 @@ impl GpioPortInfo {
             s.push_str(&indent_block(&builder_methods_input_only, 12));
             s.push_str("        }\n");
         }
+
+        s.push_str("\n");
+        s.push_str(&format!(
+            "        pub struct GpioPin<S: GpioState> {{\n            port: *const {port_ty},\n            pin: u8,\n            _state: PhantomData<S>,\n        }}\n\n"
+        ));
+        s.push_str("        #[inline(always)]\n");
+        s.push_str("        pub unsafe fn pin(pin: u8) -> GpioPin<Unconfigured> {\n");
+        s.push_str(&format!(
+            "            GpioPin {{ port: pac::{}::PTR as *const {port_ty}, pin, _state: PhantomData }}\n",
+            self.periph_mod
+        ));
+        s.push_str("        }\n\n");
+        s.push_str("        impl GpioPin<Unconfigured> {\n");
+        s.push_str("            #[inline(always)]\n");
+        if pull_exists {
+            s.push_str(
+                "            pub fn into_input(self, pull: Pull) -> GpioPin<Configured> {\n",
+            );
+        } else {
+            s.push_str(
+                "            pub fn into_input(self, _pull: u32) -> GpioPin<Configured> {\n",
+            );
+        }
+        s.push_str("                let port = unsafe { &*self.port };\n");
+        s.push_str(
+            "                let b = Pin::<UnknownMode>::builder(port, self.pin).into_input();\n",
+        );
+        if pull_exists {
+            s.push_str("                let _ = b.pull(pull).build();\n");
+        } else {
+            s.push_str("                let _ = b.build();\n");
+        }
+        s.push_str(
+            "                GpioPin { port: self.port, pin: self.pin, _state: PhantomData }\n",
+        );
+        s.push_str("            }\n\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn into_output(self, level: Level) -> GpioPin<Configured> {\n");
+        s.push_str("                let port = unsafe { &*self.port };\n");
+        s.push_str("                let _ = Pin::<UnknownMode>::builder(port, self.pin).into_output().build();\n");
+        s.push_str("                match level {\n");
+        s.push_str(&format!(
+            "                    Level::Low => port.{}.write(1u32 << (self.pin as u32)),\n",
+            self.field_outclr
+        ));
+        s.push_str(&format!(
+            "                    Level::High => port.{}.write(1u32 << (self.pin as u32)),\n",
+            self.field_outset
+        ));
+        s.push_str("                }\n");
+        s.push_str(
+            "                GpioPin { port: self.port, pin: self.pin, _state: PhantomData }\n",
+        );
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl GpioPin<Configured> {\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn enable(self) -> GpioPin<Enabled> {\n");
+        s.push_str(
+            "                GpioPin { port: self.port, pin: self.pin, _state: PhantomData }\n",
+        );
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl GpioPin<Enabled> {\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn set_high(&self) {\n");
+        s.push_str("                let port = unsafe { &*self.port };\n");
+        s.push_str(&format!(
+            "                port.{}.write(1u32 << (self.pin as u32));\n",
+            self.field_outset
+        ));
+        s.push_str("            }\n\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn set_low(&self) {\n");
+        s.push_str("                let port = unsafe { &*self.port };\n");
+        s.push_str(&format!(
+            "                port.{}.write(1u32 << (self.pin as u32));\n",
+            self.field_outclr
+        ));
+        s.push_str("            }\n");
+        s.push_str("        }\n");
 
         s.push_str("    }\n");
         Ok(s)
