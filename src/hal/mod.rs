@@ -99,12 +99,13 @@ impl GpioPortInfo {
         //
         // It does NOT depend on PAC `field_enums` to avoid name coupling; it uses numeric values.
         let mut s = String::new();
+        let port_ty = gpio_port_type_name(&self.periph_name);
 
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type Port = pac::{}::RegisterBlock;\n\n",
-            self.periph_mod
+            "        pub type {port_ty} = pac::{}::RegisterBlock;\n\n",
+            self.periph_mod,
         ));
         s.push_str("        use core::marker::PhantomData;\n\n");
 
@@ -113,7 +114,9 @@ impl GpioPortInfo {
         s.push_str("        pub struct UnknownMode;\n\n");
 
         s.push_str("        #[inline(always)]\n");
-        s.push_str("        pub unsafe fn steal() -> &'static Port {\n");
+        s.push_str(&format!(
+            "        pub unsafe fn steal() -> &'static {port_ty} {{\n"
+        ));
         s.push_str(&format!("            &*pac::{}::PTR\n", self.periph_mod));
         s.push_str("        }\n\n");
 
@@ -179,14 +182,16 @@ impl GpioPortInfo {
 
         // Pin + builder (typestate: InputMode/OutputMode).
         s.push_str("        pub struct Pin<'a, Mode> {\n");
-        s.push_str("            port: &'a Port,\n");
+        s.push_str(&format!("            port: &'a {port_ty},\n"));
         s.push_str("            index: u8,\n");
         s.push_str("            _mode: PhantomData<Mode>,\n");
         s.push_str("        }\n\n");
 
         s.push_str("        impl<'a, Mode> Pin<'a, Mode> {\n");
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn builder(port: &'a Port, index: u8) -> PinBuilder<'a, UnknownMode> {\n");
+        s.push_str(&format!(
+            "            pub fn builder(port: &'a {port_ty}, index: u8) -> PinBuilder<'a, UnknownMode> {{\n"
+        ));
         s.push_str(&format!(
             "                let reg = &port.{}[index as usize];\n",
             self.field_pin_cnf
@@ -214,7 +219,7 @@ impl GpioPortInfo {
         s.push_str("        }\n\n");
 
         s.push_str("        pub struct PinBuilder<'a, Mode> {\n");
-        s.push_str("            port: &'a Port,\n");
+        s.push_str(&format!("            port: &'a {port_ty},\n"));
         s.push_str("            index: u8,\n");
         s.push_str("            cnf: u32,\n");
         s.push_str("            _mode: PhantomData<Mode>,\n");
@@ -429,8 +434,10 @@ fn collect_gpio_ports(device: &svd::Device) -> Vec<GpioPortInfo> {
         if !is_gpio_like_port(&p.name) {
             continue;
         }
-        let Some(rb) = &p.registers else { continue };
-        let items = rb.items.as_slice();
+        let items = peripheral_register_items(device, p);
+        if items.is_empty() {
+            continue;
+        }
 
         let Some((pin_cnf_name, pin_cnf_reg)) = find_register(items, "PIN_CNF") else {
             continue;
@@ -466,6 +473,15 @@ fn is_gpio_like_port(name: &str) -> bool {
         return false;
     }
     b[1..].iter().all(|c| c.is_ascii_digit())
+}
+
+fn gpio_port_type_name(periph_name: &str) -> String {
+    let b = periph_name.as_bytes();
+    if b.len() >= 2 && (b[0] == b'P' || b[0] == b'p') && b[1..].iter().all(|c| c.is_ascii_digit()) {
+        format!("Port{}", &periph_name[1..])
+    } else {
+        "Port".to_string()
+    }
 }
 
 // --------------------------- TIMER HAL generation ---------------------------
