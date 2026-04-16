@@ -82,10 +82,15 @@ impl GpioPortInfo {
         let mut s = String::new();
 
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
+        s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
             "        pub type Port = pac::{}::RegisterBlock;\n\n",
             self.periph_mod
         ));
+        s.push_str("        use core::marker::PhantomData;\n\n");
+
+        s.push_str("        pub struct InputMode;\n");
+        s.push_str("        pub struct OutputMode;\n\n");
 
         s.push_str("        #[inline(always)]\n");
         s.push_str("        pub unsafe fn steal() -> &'static Port {\n");
@@ -128,17 +133,26 @@ impl GpioPortInfo {
             s.push('\n');
         }
 
-        // Pin + builder.
-        s.push_str("        pub struct Pin<'a> {\n");
+        // Pin + builder (typestate: InputMode/OutputMode).
+        s.push_str("        pub struct Pin<'a, Mode> {\n");
         s.push_str("            port: &'a Port,\n");
         s.push_str("            index: u8,\n");
+        s.push_str("            _mode: PhantomData<Mode>,\n");
         s.push_str("        }\n\n");
 
-        s.push_str("        impl<'a> Pin<'a> {\n");
+        s.push_str("        impl<'a, Mode> Pin<'a, Mode> {\n");
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn builder(port: &'a Port, index: u8) -> PinBuilder<'a> {\n");
-        s.push_str("                PinBuilder { port, index }\n");
+        s.push_str("            pub fn builder(port: &'a Port, index: u8) -> PinBuilder<'a, InputMode> {\n");
+        s.push_str(&format!(
+            "                let reg = &port.{}[index as usize];\n",
+            self.field_pin_cnf
+        ));
+        s.push_str("                let cnf = reg.read();\n");
+        s.push_str("                PinBuilder { port, index, cnf, _mode: PhantomData }\n");
         s.push_str("            }\n\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        impl<'a> Pin<'a, OutputMode> {\n");
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn set_high(&self) {\n");
         s.push_str(&format!(
@@ -155,19 +169,28 @@ impl GpioPortInfo {
         s.push_str("            }\n");
         s.push_str("        }\n\n");
 
-        s.push_str("        pub struct PinBuilder<'a> {\n");
+        s.push_str("        pub struct PinBuilder<'a, Mode> {\n");
         s.push_str("            port: &'a Port,\n");
         s.push_str("            index: u8,\n");
+        s.push_str("            cnf: u32,\n");
+        s.push_str("            _mode: PhantomData<Mode>,\n");
         s.push_str("        }\n\n");
 
-        s.push_str("        impl<'a> PinBuilder<'a> {\n");
+        s.push_str("        impl<'a, Mode> PinBuilder<'a, Mode> {\n");
         s.push_str(&indent_block(&builder_methods, 12));
         if !builder_methods.is_empty() && !builder_methods.ends_with('\n') {
             s.push('\n');
         }
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn build(self) -> Pin<'a> {\n");
-        s.push_str("                Pin { port: self.port, index: self.index }\n");
+        s.push_str("            pub fn build(self) -> Pin<'a, Mode> {\n");
+        s.push_str(&format!(
+            "                let reg = &self.port.{}[self.index as usize];\n",
+            self.field_pin_cnf
+        ));
+        s.push_str("                reg.write(self.cnf);\n");
+        s.push_str(
+            "                Pin { port: self.port, index: self.index, _mode: PhantomData }\n",
+        );
         s.push_str("            }\n");
         s.push_str("        }\n");
 
@@ -197,21 +220,84 @@ fn render_builder_setter(
     let mname = sanitize_field_name(field_name);
 
     let mut s = String::new();
+
+    // Special handling for DIR: provide typestate transitions into OutputMode/InputMode so that
+    // set_high/set_low are only available after the required configuration.
+    if field_name.eq_ignore_ascii_case("DIR") {
+        let (dir_in, dir_out) = dir_input_output_values(f);
+
+        // Keep the generic setter for backwards compatibility.
+        s.push_str("            #[inline(always)]\n");
+        s.push_str(&format!(
+            "            pub fn {mname}(self, v: {ty}) -> Self {{\n"
+        ));
+        let _ = pin_cnf_field; // kept for signature compatibility; writes happen in build()
+        s.push_str("                let cur = self.cnf;\n");
+        s.push_str(&format!(
+            "                let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({arg}) & 0x{mask:X}u32) << {lsb});\n"
+        ));
+        s.push_str("                PinBuilder { cnf: new, ..self }\n");
+        s.push_str("            }\n\n");
+
+        // Typestate transitions.
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn into_output(self) -> PinBuilder<'a, OutputMode> {\n");
+        s.push_str("                let cur = self.cnf;\n");
+        s.push_str(&format!(
+            "                let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_out}u32) & 0x{mask:X}u32) << {lsb});\n"
+        ));
+        s.push_str("                PinBuilder { port: self.port, index: self.index, cnf: new, _mode: PhantomData }\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn into_input(self) -> PinBuilder<'a, InputMode> {\n");
+        s.push_str("                let cur = self.cnf;\n");
+        s.push_str(&format!(
+            "                let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_in}u32) & 0x{mask:X}u32) << {lsb});\n"
+        ));
+        s.push_str("                PinBuilder { port: self.port, index: self.index, cnf: new, _mode: PhantomData }\n");
+        s.push_str("            }\n\n");
+
+        return s;
+    }
     s.push_str("            #[inline(always)]\n");
     s.push_str(&format!(
         "            pub fn {mname}(self, v: {ty}) -> Self {{\n"
     ));
-    s.push_str(&format!(
-        "                let reg = &self.port.{pin_cnf_field}[self.index as usize];\n"
-    ));
-    s.push_str("                let cur = reg.read();\n");
+    let _ = pin_cnf_field; // kept for signature compatibility; writes happen in build()
+    s.push_str("                let cur = self.cnf;\n");
     s.push_str(&format!(
         "                let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({arg}) & 0x{mask:X}u32) << {lsb});\n"
     ));
-    s.push_str("                reg.write(new);\n");
-    s.push_str("                self\n");
+    s.push_str("                PinBuilder { cnf: new, ..self }\n");
     s.push_str("            }\n\n");
     s
+}
+
+fn dir_input_output_values(f: &svd::Field) -> (u32, u32) {
+    // Try to infer from enumeratedValues; fall back to (0=input, 1=output).
+    let mut input: Option<u32> = None;
+    let mut output: Option<u32> = None;
+
+    if let Some(evs) = f.enumerated_values.first() {
+        for v in &evs.enumerated_value {
+            let Some(val) = (match &v.spec {
+                svd::EnumeratedValueSpec::Value { value } => parse_enum_u64(value),
+                svd::EnumeratedValueSpec::IsDefault { .. } => None,
+            }) else {
+                continue;
+            };
+            let name = v.name.to_ascii_lowercase();
+            if input.is_none() && name.contains("input") {
+                input = Some(val as u32);
+            }
+            if output.is_none() && name.contains("output") {
+                output = Some(val as u32);
+            }
+        }
+    }
+
+    (input.unwrap_or(0), output.unwrap_or(1))
 }
 
 fn render_field_enum(field_name: &str, f: &svd::Field) -> Option<String> {
