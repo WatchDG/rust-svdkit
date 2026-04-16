@@ -526,6 +526,33 @@ impl GenState {
 
 // --------------------------- implementation ---------------------------
 
+fn find_peripheral<'a>(device: &'a svd::Device, name: &str) -> Option<&'a svd::Peripheral> {
+    device.peripherals.iter().find(|p| p.name == name)
+}
+
+fn peripheral_register_items<'a>(
+    device: &'a svd::Device,
+    p: &'a svd::Peripheral,
+) -> &'a [svd::RegisterBlockItem] {
+    let mut cur = p;
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    loop {
+        if let Some(rb) = cur.registers.as_ref() {
+            return rb.items.as_slice();
+        }
+        let Some(df) = cur.derived_from.as_deref() else {
+            return &[];
+        };
+        if !seen.insert(cur.name.clone()) {
+            return &[];
+        }
+        let Some(next) = find_peripheral(device, df) else {
+            return &[];
+        };
+        cur = next;
+    }
+}
+
 fn generate_peripheral(
     st: &mut GenState,
     out: &mut CodeWriter,
@@ -550,11 +577,7 @@ fn generate_peripheral(
     mod_out.writeln("pub struct RegisterBlock {")?;
     mod_out.indent();
 
-    let items = p
-        .registers
-        .as_ref()
-        .map(|rb| rb.items.as_slice())
-        .unwrap_or(&[]);
+    let items = peripheral_register_items(device, p);
 
     let ctx = Ctx {
         device,
@@ -932,9 +955,22 @@ fn resolve_size_bits(ctx: &Ctx<'_>, leaf_props: &svd::RegisterProperties) -> u64
             return v;
         }
     }
-    if let Some(p) = ctx.periph {
-        if let Some(v) = p.register_properties.size {
-            return v;
+    if let Some(mut p) = ctx.periph {
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        loop {
+            if let Some(v) = p.register_properties.size {
+                return v;
+            }
+            let Some(df) = p.derived_from.as_deref() else {
+                break;
+            };
+            if !seen.insert(p.name.clone()) {
+                break;
+            }
+            let Some(next) = find_peripheral(ctx.device, df) else {
+                break;
+            };
+            p = next;
         }
     }
     if let Some(v) = ctx.device.default_register_properties.size {
@@ -966,9 +1002,22 @@ fn resolve_access(ctx: &Ctx<'_>, leaf_props: &svd::RegisterProperties) -> svd::A
             return v;
         }
     }
-    if let Some(p) = ctx.periph {
-        if let Some(v) = p.register_properties.access {
-            return v;
+    if let Some(mut p) = ctx.periph {
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        loop {
+            if let Some(v) = p.register_properties.access {
+                return v;
+            }
+            let Some(df) = p.derived_from.as_deref() else {
+                break;
+            };
+            if !seen.insert(p.name.clone()) {
+                break;
+            }
+            let Some(next) = find_peripheral(ctx.device, df) else {
+                break;
+            };
+            p = next;
         }
     }
     if let Some(v) = ctx.device.default_register_properties.access {
@@ -997,12 +1046,28 @@ fn resolve_reset(ctx: &Ctx<'_>, leaf_props: &svd::RegisterProperties) -> Option<
         }
     }
     if (value.is_none() || mask.is_none()) && ctx.periph.is_some() {
-        let p = ctx.periph.unwrap();
-        if value.is_none() {
-            value = p.register_properties.reset_value;
-        }
-        if mask.is_none() {
-            mask = p.register_properties.reset_mask;
+        let mut p = ctx.periph.unwrap();
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        loop {
+            if value.is_none() {
+                value = p.register_properties.reset_value;
+            }
+            if mask.is_none() {
+                mask = p.register_properties.reset_mask;
+            }
+            if value.is_some() && mask.is_some() {
+                break;
+            }
+            let Some(df) = p.derived_from.as_deref() else {
+                break;
+            };
+            if !seen.insert(p.name.clone()) {
+                break;
+            }
+            let Some(next) = find_peripheral(ctx.device, df) else {
+                break;
+            };
+            p = next;
         }
     }
     if value.is_none() {
@@ -1729,9 +1794,7 @@ fn emit_enums(device: &svd::Device, st: &mut GenState, out: &mut CodeWriter) -> 
 
     for p in &periphs {
         let mut regs: Vec<(&svd::Register, String)> = Vec::new();
-        if let Some(rb) = &p.registers {
-            collect_registers(rb.items.as_slice(), "", &mut regs);
-        }
+        collect_registers(peripheral_register_items(device, p), "", &mut regs);
         regs.sort_by(|a, b| a.1.cmp(&b.1));
 
         for (r, path) in regs {

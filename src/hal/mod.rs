@@ -728,14 +728,43 @@ impl TimerInfo {
     }
 }
 
+fn find_peripheral<'a>(device: &'a svd::Device, name: &str) -> Option<&'a svd::Peripheral> {
+    device.peripherals.iter().find(|p| p.name == name)
+}
+
+fn peripheral_register_items<'a>(
+    device: &'a svd::Device,
+    p: &'a svd::Peripheral,
+) -> &'a [svd::RegisterBlockItem] {
+    let mut cur = p;
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    loop {
+        if let Some(rb) = cur.registers.as_ref() {
+            return rb.items.as_slice();
+        }
+        let Some(df) = cur.derived_from.as_deref() else {
+            return &[];
+        };
+        if !seen.insert(cur.name.clone()) {
+            return &[];
+        }
+        let Some(next) = find_peripheral(device, df) else {
+            return &[];
+        };
+        cur = next;
+    }
+}
+
 fn collect_timers(device: &svd::Device) -> Vec<TimerInfo> {
     let mut out = Vec::new();
     for p in &device.peripherals {
         if !is_timer_like(&p.name) {
             continue;
         }
-        let Some(rb) = &p.registers else { continue };
-        let items = rb.items.as_slice();
+        let items = peripheral_register_items(device, p);
+        if items.is_empty() {
+            continue;
+        }
 
         let Some((mode_name, mode_reg)) = find_register_prefer_exact(items, "MODE") else {
             continue;
