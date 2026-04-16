@@ -24,7 +24,7 @@ pub struct GeneratedFile {
 /// The resulting file name is derived from `device.name` and ends with `.rs`.
 pub fn generate_device_file(device: &svd::Device) -> Result<GeneratedFile> {
     let file_stem = sanitize_file_stem(&device.name);
-    let file_name = format!("{file_stem}.rs");
+    let file_name = format!("{file_stem}_pac.rs");
     let content = generate_device_rs(device)?;
     Ok(GeneratedFile { file_name, content })
 }
@@ -217,25 +217,26 @@ pub fn generate_from_svd_file(svd_path: &Path, out_dir: &Path) -> Result<std::pa
 /// - переход в пользовательский `main()`
 ///
 /// Выходные файлы:
-/// - `<device>.rs` (как `generate_device_file`)
-/// - `rt.rs` (startup + vector table)
-/// - `link.x` (минимальный linker script; `INCLUDE memory.x`)
+/// - `<device>_pac.rs` (как `generate_device_file`)
+/// - `<device>_rt.rs` (startup + vector table)
+/// - `<device>_link.x` (минимальный linker script; `INCLUDE memory.x`)
 pub fn generate_device_files_with_rt(device: &svd::Device) -> Result<Vec<GeneratedFile>> {
+    let file_stem = sanitize_file_stem(&device.name);
     let mut out = Vec::new();
     out.push(generate_device_file(device)?);
 
     out.push(GeneratedFile {
-        file_name: "rt.rs".to_string(),
+        file_name: format!("{file_stem}_rt.rs"),
         content: generate_rt_rs(device)?,
     });
     out.push(GeneratedFile {
-        file_name: "link.x".to_string(),
+        file_name: format!("{file_stem}_link.x"),
         content: generate_link_x(device)?,
     });
     Ok(out)
 }
 
-/// Записывает `<device>.rs` + `rt.rs` + `link.x` в `out_dir`.
+/// Записывает `<device>_pac.rs` + `<device>_rt.rs` + `<device>_link.x` в `out_dir`.
 pub fn write_device_files_with_rt(
     device: &svd::Device,
     out_dir: &Path,

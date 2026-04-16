@@ -37,9 +37,10 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
     out.push_str("#![allow(dead_code)]\n");
     out.push_str("#![allow(non_snake_case)]\n\n");
 
-    // We assume the PAC device file is included as a Rust module with the same name as the file stem,
-    // e.g. `mod nrf52840;` for `nrf52840.rs`.
-    out.push_str(&format!("use crate::{stem} as pac;\n\n"));
+    // We assume the PAC device file is included as a Rust module named `{device}_pac`,
+    // e.g. `mod nrf52840_pac;` for `nrf52840_pac.rs`.
+    let pac_mod = format!("{stem}_pac");
+    out.push_str(&format!("use crate::{pac_mod} as pac;\n\n"));
 
     // Generate GPIO helpers (P0/P1 style) if the device contains such peripherals.
     let gpio_ports = collect_gpio_ports(device);
