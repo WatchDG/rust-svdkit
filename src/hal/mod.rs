@@ -227,50 +227,50 @@ fn render_builder_setter(
         let (dir_in, dir_out) = dir_input_output_values(f);
 
         // Keep the generic setter for backwards compatibility.
-        s.push_str("            #[inline(always)]\n");
-        s.push_str(&format!(
-            "            pub fn {mname}(self, v: {ty}) -> Self {{\n"
-        ));
+        s.push_str("#[inline(always)]\n");
+        s.push_str(&format!("pub fn {mname}(self, v: {ty}) -> Self {{\n"));
         let _ = pin_cnf_field; // kept for signature compatibility; writes happen in build()
-        s.push_str("                let cur = self.cnf;\n");
+        s.push_str("    let cur = self.cnf;\n");
         s.push_str(&format!(
-            "                let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({arg}) & 0x{mask:X}u32) << {lsb});\n"
+            "    let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({arg}) & 0x{mask:X}u32) << {lsb});\n"
         ));
-        s.push_str("                PinBuilder { cnf: new, ..self }\n");
-        s.push_str("            }\n\n");
+        s.push_str("    PinBuilder { cnf: new, ..self }\n");
+        s.push_str("}\n\n");
 
         // Typestate transitions.
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn into_output(self) -> PinBuilder<'a, OutputMode> {\n");
-        s.push_str("                let cur = self.cnf;\n");
+        s.push_str("#[inline(always)]\n");
+        s.push_str("pub fn into_output(self) -> PinBuilder<'a, OutputMode> {\n");
+        s.push_str("    let cur = self.cnf;\n");
         s.push_str(&format!(
-            "                let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_out}u32) & 0x{mask:X}u32) << {lsb});\n"
+            "    let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_out}u32) & 0x{mask:X}u32) << {lsb});\n"
         ));
-        s.push_str("                PinBuilder { port: self.port, index: self.index, cnf: new, _mode: PhantomData }\n");
-        s.push_str("            }\n\n");
+        s.push_str(
+            "    PinBuilder { port: self.port, index: self.index, cnf: new, _mode: PhantomData }\n",
+        );
+        s.push_str("}\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn into_input(self) -> PinBuilder<'a, InputMode> {\n");
-        s.push_str("                let cur = self.cnf;\n");
+        s.push_str("#[inline(always)]\n");
+        s.push_str("pub fn into_input(self) -> PinBuilder<'a, InputMode> {\n");
+        s.push_str("    let cur = self.cnf;\n");
         s.push_str(&format!(
-            "                let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_in}u32) & 0x{mask:X}u32) << {lsb});\n"
+            "    let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_in}u32) & 0x{mask:X}u32) << {lsb});\n"
         ));
-        s.push_str("                PinBuilder { port: self.port, index: self.index, cnf: new, _mode: PhantomData }\n");
-        s.push_str("            }\n\n");
+        s.push_str(
+            "    PinBuilder { port: self.port, index: self.index, cnf: new, _mode: PhantomData }\n",
+        );
+        s.push_str("}\n\n");
 
         return s;
     }
-    s.push_str("            #[inline(always)]\n");
-    s.push_str(&format!(
-        "            pub fn {mname}(self, v: {ty}) -> Self {{\n"
-    ));
+    s.push_str("#[inline(always)]\n");
+    s.push_str(&format!("pub fn {mname}(self, v: {ty}) -> Self {{\n"));
     let _ = pin_cnf_field; // kept for signature compatibility; writes happen in build()
-    s.push_str("                let cur = self.cnf;\n");
+    s.push_str("    let cur = self.cnf;\n");
     s.push_str(&format!(
-        "                let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({arg}) & 0x{mask:X}u32) << {lsb});\n"
+        "    let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({arg}) & 0x{mask:X}u32) << {lsb});\n"
     ));
-    s.push_str("                PinBuilder { cnf: new, ..self }\n");
-    s.push_str("            }\n\n");
+    s.push_str("    PinBuilder { cnf: new, ..self }\n");
+    s.push_str("}\n\n");
     s
 }
 
@@ -319,13 +319,13 @@ fn render_field_enum(field_name: &str, f: &svd::Field) -> Option<String> {
 
     let ty = sanitize_type_name(field_name);
     let mut s = String::new();
-    s.push_str(&format!("        #[repr(u32)]\n"));
-    s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
-    s.push_str(&format!("        pub enum {ty} {{\n"));
+    s.push_str("#[repr(u32)]\n");
+    s.push_str("#[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+    s.push_str(&format!("pub enum {ty} {{\n"));
     for (n, v) in &vars {
-        s.push_str(&format!("            {n} = {v},\n"));
+        s.push_str(&format!("    {n} = {v},\n"));
     }
-    s.push_str("        }\n");
+    s.push_str("}\n");
     Some(s)
 }
 
