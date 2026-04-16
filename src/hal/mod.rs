@@ -47,7 +47,8 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
 
     // Generate GPIO helpers (P0/P1 style) if the device contains such peripherals.
     let gpio_ports = collect_gpio_ports(device);
-    if !gpio_ports.is_empty() {
+    let has_gpio_ports = !gpio_ports.is_empty();
+    if has_gpio_ports {
         out.push_str("pub mod gpio {\n");
         out.push_str("    use super::pac;\n\n");
 
@@ -56,6 +57,20 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
             out.push('\n');
         }
 
+        out.push_str("}\n");
+    }
+
+    let timers = collect_timers(device);
+    if !timers.is_empty() {
+        if has_gpio_ports {
+            out.push('\n');
+        }
+        out.push_str("pub mod timer {\n");
+        out.push_str("    use super::pac;\n\n");
+        for t in timers {
+            out.push_str(&t.render()?);
+            out.push('\n');
+        }
         out.push_str("}\n");
     }
 
@@ -451,6 +466,417 @@ fn is_gpio_like_port(name: &str) -> bool {
         return false;
     }
     b[1..].iter().all(|c| c.is_ascii_digit())
+}
+
+// --------------------------- TIMER HAL generation ---------------------------
+
+#[derive(Debug, Clone)]
+struct TimerInfo {
+    periph_mod: String,
+    hal_mod: String,
+
+    field_mode: String,
+    field_bitmode: String,
+    field_prescaler: String,
+    field_cc: String,
+    field_shorts: String,
+    field_intenset: String,
+    field_events_compare: String,
+    field_tasks_clear: String,
+    field_tasks_start: String,
+
+    mode_field: svd::Field,
+    bitmode_field: svd::Field,
+    shorts_fields: Vec<(usize, svd::Field)>,
+    intenset_fields: Vec<(usize, svd::Field)>,
+}
+
+impl TimerInfo {
+    fn render(&self) -> Result<String> {
+        let mut s = String::new();
+
+        s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
+        s.push_str("        use super::pac;\n\n");
+        s.push_str(&format!(
+            "        pub type Timer = pac::{}::RegisterBlock;\n\n",
+            self.periph_mod
+        ));
+
+        s.push_str("        #[inline(always)]\n");
+        s.push_str("        pub unsafe fn steal() -> &'static Timer {\n");
+        s.push_str(&format!("            &*pac::{}::PTR\n", self.periph_mod));
+        s.push_str("        }\n\n");
+
+        let (mode_lsb, mode_width) = field_lsb_width(&self.mode_field);
+        let mode_mask: u32 = if mode_width >= 32 {
+            u32::MAX
+        } else {
+            ((1u64 << mode_width) - 1) as u32
+        };
+        let mode_enum = render_field_enum("MODE", &self.mode_field);
+        if let Some(src) = &mode_enum {
+            s.push_str(&indent_block(src, 8));
+            s.push('\n');
+        }
+        let mode_ty = if mode_enum.is_some() {
+            sanitize_type_name("MODE")
+        } else {
+            "u32".to_string()
+        };
+        let mode_arg = if mode_enum.is_some() { "v as u32" } else { "v" };
+
+        let (bitmode_lsb, bitmode_width) = field_lsb_width(&self.bitmode_field);
+        let bitmode_mask: u32 = if bitmode_width >= 32 {
+            u32::MAX
+        } else {
+            ((1u64 << bitmode_width) - 1) as u32
+        };
+        let bitmode_enum = render_field_enum("BITMODE", &self.bitmode_field);
+        if let Some(src) = &bitmode_enum {
+            s.push_str(&indent_block(src, 8));
+            s.push('\n');
+        }
+        let bitmode_ty = if bitmode_enum.is_some() {
+            sanitize_type_name("BITMODE")
+        } else {
+            "u32".to_string()
+        };
+        let bitmode_arg = if bitmode_enum.is_some() {
+            "v as u32"
+        } else {
+            "v"
+        };
+
+        s.push_str("        pub struct TimerBuilder<'a> {\n");
+        s.push_str("            t: &'a Timer,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        impl<'a> TimerBuilder<'a> {\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn new(t: &'a Timer) -> Self {\n");
+        s.push_str("                Self { t }\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str(&format!(
+            "            pub fn mode(self, v: {mode_ty}) -> Self {{\n"
+        ));
+        s.push_str(&format!(
+            "                let cur = self.t.{}.read();\n",
+            self.field_mode
+        ));
+        s.push_str(&format!(
+            "                let new = (cur & !(0x{mode_mask:X}u32 << {mode_lsb})) | ((({mode_arg}) & 0x{mode_mask:X}u32) << {mode_lsb});\n"
+        ));
+        s.push_str(&format!(
+            "                self.t.{}.write(new);\n",
+            self.field_mode
+        ));
+        s.push_str("                self\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str(&format!(
+            "            pub fn bitmode(self, v: {bitmode_ty}) -> Self {{\n"
+        ));
+        s.push_str(&format!(
+            "                let cur = self.t.{}.read();\n",
+            self.field_bitmode
+        ));
+        s.push_str(&format!(
+            "                let new = (cur & !(0x{bitmode_mask:X}u32 << {bitmode_lsb})) | ((({bitmode_arg}) & 0x{bitmode_mask:X}u32) << {bitmode_lsb});\n"
+        ));
+        s.push_str(&format!(
+            "                self.t.{}.write(new);\n",
+            self.field_bitmode
+        ));
+        s.push_str("                self\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn prescaler(self, v: u32) -> Self {\n");
+        s.push_str(&format!(
+            "                self.t.{}.write(v);\n",
+            self.field_prescaler
+        ));
+        s.push_str("                self\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn cc(self, index: usize, v: u32) -> Self {\n");
+        s.push_str(&format!(
+            "                if index < self.t.{}.len() {{\n",
+            self.field_cc
+        ));
+        s.push_str(&format!(
+            "                    self.t.{}[index].write(v);\n",
+            self.field_cc
+        ));
+        s.push_str("                }\n");
+        s.push_str("                self\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str(
+            "            pub fn clear_on_compare(self, index: usize, enable: bool) -> Self {\n",
+        );
+        s.push_str(&format!(
+            "                let cur = self.t.{}.read();\n",
+            self.field_shorts
+        ));
+        s.push_str("                let mut new = cur;\n");
+        s.push_str("                match index {\n");
+        for (idx, f) in &self.shorts_fields {
+            let (lsb, width) = field_lsb_width(f);
+            let mask: u32 = if width >= 32 {
+                u32::MAX
+            } else {
+                ((1u64 << width) - 1) as u32
+            };
+            s.push_str(&format!("                    {idx} => {{\n"));
+            s.push_str(&format!(
+                "                        let v: u32 = if enable {{ 1 }} else {{ 0 }};\n"
+            ));
+            s.push_str(&format!(
+                "                        new = (new & !(0x{mask:X}u32 << {lsb})) | ((v & 0x{mask:X}u32) << {lsb});\n"
+            ));
+            s.push_str("                    }\n");
+        }
+        s.push_str("                    _ => {}\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                self.t.{}.write(new);\n",
+            self.field_shorts
+        ));
+        s.push_str("                self\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str(
+            "            pub fn enable_interrupt_on_compare(self, index: usize) -> Self {\n",
+        );
+        s.push_str(&format!(
+            "                let cur = self.t.{}.read();\n",
+            self.field_intenset
+        ));
+        s.push_str("                let mut new = cur;\n");
+        s.push_str("                match index {\n");
+        for (idx, f) in &self.intenset_fields {
+            let (lsb, width) = field_lsb_width(f);
+            let mask: u32 = if width >= 32 {
+                u32::MAX
+            } else {
+                ((1u64 << width) - 1) as u32
+            };
+            s.push_str(&format!("                    {idx} => {{\n"));
+            s.push_str(&format!(
+                "                        new = (new & !(0x{mask:X}u32 << {lsb})) | ((1u32 & 0x{mask:X}u32) << {lsb});\n"
+            ));
+            s.push_str("                    }\n");
+        }
+        s.push_str("                    _ => {}\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                self.t.{}.write(new);\n",
+            self.field_intenset
+        ));
+        s.push_str("                self\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn clear_event_compare(self, index: usize) -> Self {\n");
+        s.push_str(&format!(
+            "                if index < self.t.{}.len() {{\n",
+            self.field_events_compare
+        ));
+        s.push_str(&format!(
+            "                    self.t.{}[index].write(0);\n",
+            self.field_events_compare
+        ));
+        s.push_str("                }\n");
+        s.push_str("                self\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn clear(self) -> Self {\n");
+        s.push_str(&format!(
+            "                self.t.{}.write(1);\n",
+            self.field_tasks_clear
+        ));
+        s.push_str("                self\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn start(self) -> Self {\n");
+        s.push_str(&format!(
+            "                self.t.{}.write(1);\n",
+            self.field_tasks_start
+        ));
+        s.push_str("                self\n");
+        s.push_str("            }\n");
+
+        s.push_str("        }\n");
+
+        s.push_str("    }\n");
+        Ok(s)
+    }
+}
+
+fn collect_timers(device: &svd::Device) -> Vec<TimerInfo> {
+    let mut out = Vec::new();
+    for p in &device.peripherals {
+        if !is_timer_like(&p.name) {
+            continue;
+        }
+        let Some(rb) = &p.registers else { continue };
+        let items = rb.items.as_slice();
+
+        let Some((mode_name, mode_reg)) = find_register_prefer_exact(items, "MODE") else {
+            continue;
+        };
+        let Some((bitmode_name, bitmode_reg)) = find_register_prefer_exact(items, "BITMODE") else {
+            continue;
+        };
+        let Some((prescaler_name, _)) = find_register(items, "PRESCALER") else {
+            continue;
+        };
+        let Some((cc_name, cc_reg)) = find_register(items, "CC") else {
+            continue;
+        };
+        let Some((shorts_name, shorts_reg)) = find_register(items, "SHORTS") else {
+            continue;
+        };
+        let Some((intenset_name, intenset_reg)) = find_register(items, "INTENSET") else {
+            continue;
+        };
+        let Some((events_compare_name, events_compare_reg)) =
+            find_register(items, "EVENTS_COMPARE")
+        else {
+            continue;
+        };
+        let Some((tasks_clear_name, _)) = find_register(items, "TASKS_CLEAR") else {
+            continue;
+        };
+        let Some((tasks_start_name, _)) = find_register(items, "TASKS_START") else {
+            continue;
+        };
+
+        let mode_field = mode_reg
+            .field
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case("MODE"))
+            .cloned()
+            .or_else(|| mode_reg.field.first().cloned());
+        let bitmode_field = bitmode_reg
+            .field
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case("BITMODE"))
+            .cloned()
+            .or_else(|| bitmode_reg.field.first().cloned());
+
+        let (Some(mode_field), Some(bitmode_field)) = (mode_field, bitmode_field) else {
+            continue;
+        };
+
+        let shorts_fields = collect_compare_fields(&shorts_reg.field, true);
+        let intenset_fields = collect_compare_fields(&intenset_reg.field, false);
+
+        let cc_len = cc_reg.dim.as_ref().map(|d| d.dim as usize).unwrap_or(1);
+        let events_compare_len = events_compare_reg
+            .dim
+            .as_ref()
+            .map(|d| d.dim as usize)
+            .unwrap_or(1);
+
+        let _ = (cc_len, events_compare_len);
+
+        out.push(TimerInfo {
+            periph_mod: sanitize_module_name(&p.name),
+            hal_mod: sanitize_field_name(&p.name),
+
+            field_mode: sanitize_field_name(&mode_name),
+            field_bitmode: sanitize_field_name(&bitmode_name),
+            field_prescaler: sanitize_field_name(&prescaler_name),
+            field_cc: sanitize_field_name(&cc_name),
+            field_shorts: sanitize_field_name(&shorts_name),
+            field_intenset: sanitize_field_name(&intenset_name),
+            field_events_compare: sanitize_field_name(&events_compare_name),
+            field_tasks_clear: sanitize_field_name(&tasks_clear_name),
+            field_tasks_start: sanitize_field_name(&tasks_start_name),
+
+            mode_field,
+            bitmode_field,
+            shorts_fields,
+            intenset_fields,
+        });
+    }
+    out
+}
+
+fn is_timer_like(name: &str) -> bool {
+    let b = name.as_bytes();
+    if b.len() < 6 {
+        return false;
+    }
+    let (pfx, rest) = b.split_at(5);
+    if pfx != b"TIMER" && pfx != b"timer" {
+        return false;
+    }
+    rest.iter().all(|c| c.is_ascii_digit())
+}
+
+fn collect_compare_fields(fields: &[svd::Field], needs_clear: bool) -> Vec<(usize, svd::Field)> {
+    let mut out: Vec<(usize, svd::Field)> = Vec::new();
+    for f in fields {
+        let name = f.name.to_ascii_uppercase();
+        let Some(idx) = parse_compare_index(&name) else {
+            continue;
+        };
+        if needs_clear && !name.contains("CLEAR") {
+            continue;
+        }
+        if !needs_clear && name.contains("CLEAR") {
+            continue;
+        }
+        out.push((idx, f.clone()));
+    }
+    out.sort_by_key(|(idx, _)| *idx);
+    out
+}
+
+fn parse_compare_index(name_upper: &str) -> Option<usize> {
+    let p = name_upper.find("COMPARE")?;
+    let rest = &name_upper[p + "COMPARE".len()..];
+    let digits = rest
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<usize>().ok()
+}
+
+fn find_register_prefer_exact<'a>(
+    items: &'a [svd::RegisterBlockItem],
+    needle: &str,
+) -> Option<(String, &'a svd::Register)> {
+    let needle_upper = needle.to_ascii_uppercase();
+    for it in items {
+        match it {
+            svd::RegisterBlockItem::Register { register } => {
+                if register.name.to_ascii_uppercase() == needle_upper {
+                    return Some((register.name.clone(), register));
+                }
+            }
+            svd::RegisterBlockItem::Cluster { cluster } => {
+                if let Some(x) = find_register_prefer_exact(cluster.items.as_slice(), needle) {
+                    return Some(x);
+                }
+            }
+        }
+    }
+    find_register(items, needle)
 }
 
 fn find_register<'a>(
