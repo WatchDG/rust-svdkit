@@ -229,8 +229,8 @@ fn device_cluster_dim() -> svd::Device {
 
 #[test]
 fn golden_gpio_enum_full_minimal() {
-    const EXPECTED_FULL: u64 = 0x690221E7311B542D;
-    const EXPECTED_MINIMAL: u64 = 0xA1F3AF3CD3FA8342;
+    const EXPECTED_FULL: u64 = 0x02DA90198057482F;
+    const EXPECTED_MINIMAL: u64 = 0xAC80C1357C07126C;
 
     let dev = device_gpio_enum();
     let full =
@@ -258,8 +258,8 @@ fn golden_gpio_enum_full_minimal() {
 
 #[test]
 fn golden_cluster_dim_full_minimal() {
-    const EXPECTED_FULL: u64 = 0xEB47EBBBD3CFC7AE;
-    const EXPECTED_MINIMAL: u64 = 0x31551238F256BD51;
+    const EXPECTED_FULL: u64 = 0x388D2373388FF5DE;
+    const EXPECTED_MINIMAL: u64 = 0x6FBD4BBEF43B98A1;
 
     let dev = device_cluster_dim();
     let full =

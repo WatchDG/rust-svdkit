@@ -253,7 +253,9 @@ impl GpioPortInfo {
         if let Some((lsb, mask, out_val)) = dir_info {
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn dir(self, v: Dir) -> Self {\n");
-            s.push_str(&format!("                let output = (v as u32) == {out_val}u32;\n"));
+            s.push_str(&format!(
+                "                let output = (v as u32) == {out_val}u32;\n"
+            ));
             if lsb == 0 {
                 s.push_str(&format!(
                     "                let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
@@ -263,7 +265,9 @@ impl GpioPortInfo {
                     "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
-            s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output }\n");
+            s.push_str(
+                "                PinConfigurator { port: self.port, pin: self.pin, cnf, output }\n",
+            );
             s.push_str("            }\n\n");
         }
 
