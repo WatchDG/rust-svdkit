@@ -661,9 +661,7 @@ impl TimerInfo {
         s.push_str("            _mode: PhantomData<M>,\n");
         s.push_str("        }\n\n");
 
-        s.push_str(&format!(
-            "        impl<'a> Timer<'a, Unconfigured> {{\n"
-        ));
+        s.push_str(&format!("        impl<'a> Timer<'a, Unconfigured> {{\n"));
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn configure(self) -> TimerConfigurator<'a> {\n");
         s.push_str("                TimerConfigurator {\n");
@@ -739,7 +737,9 @@ impl TimerInfo {
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn clear_on_compare(self, index: usize, enable: bool) -> Self {\n");
+        s.push_str(
+            "            pub fn clear_on_compare(self, index: usize, enable: bool) -> Self {\n",
+        );
         s.push_str("                let mut mask = self.clear_on_compare_mask.unwrap_or(0);\n");
         s.push_str("                match index {\n");
         for (idx, f) in &self.shorts_fields {
@@ -775,7 +775,9 @@ impl TimerInfo {
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn enable_interrupt_on_compare(self, index: usize) -> Self {\n");
+        s.push_str(
+            "            pub fn enable_interrupt_on_compare(self, index: usize) -> Self {\n",
+        );
         s.push_str("                let mut mask = self.interrupt_mask.unwrap_or(0);\n");
         s.push_str("                match index {\n");
         for (idx, f) in &self.intenset_fields {
@@ -806,7 +808,9 @@ impl TimerInfo {
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn apply(self) -> TimerConfigured<'a> {\n");
-        s.push_str(&format!("                if let Some(v) = self.bitmode_val {{\n"));
+        s.push_str(&format!(
+            "                if let Some(v) = self.bitmode_val {{\n"
+        ));
         s.push_str(&format!(
             "                    let cur = self.t.{}.read();\n",
             self.field_bitmode
@@ -876,18 +880,20 @@ impl TimerInfo {
         ));
         s.push_str("                    match v {\n");
         s.push_str(&format!(
-                    "                        0 => TimerConfigured::Timer(TimerModeTimer(self.t)),\n"
-                ));
-                s.push_str(&format!(
-                    "                        1 => TimerConfigured::Counter(TimerModCounter(self.t)),\n"
-                ));
-                s.push_str(&format!(
+            "                        0 => TimerConfigured::Timer(TimerModeTimer(self.t)),\n"
+        ));
+        s.push_str(&format!(
+            "                        1 => TimerConfigured::Counter(TimerModCounter(self.t)),\n"
+        ));
+        s.push_str(&format!(
                     "                        2 => TimerConfigured::LowPowerCounter(TimerModeLowPowerCounter(self.t)),\n"
                 ));
-                s.push_str("                        _ => TimerConfigured::Timer(TimerModeTimer(self.t)),\n");
-                s.push_str("                    }\n");
-                s.push_str("                } else {\n");
-                s.push_str("                    TimerConfigured::Timer(TimerModeTimer(self.t))\n");
+        s.push_str(
+            "                        _ => TimerConfigured::Timer(TimerModeTimer(self.t)),\n",
+        );
+        s.push_str("                    }\n");
+        s.push_str("                } else {\n");
+        s.push_str("                    TimerConfigured::Timer(TimerModeTimer(self.t))\n");
         s.push_str("                }\n");
         s.push_str("            }\n");
         s.push_str("        }\n\n");
@@ -895,7 +901,9 @@ impl TimerInfo {
         s.push_str("        pub enum TimerConfigured<'a> {\n");
         s.push_str(&format!("            Timer(TimerModeTimer<'a>),\n"));
         s.push_str(&format!("            Counter(TimerModCounter<'a>),\n"));
-        s.push_str(&format!("            LowPowerCounter(TimerModeLowPowerCounter<'a>),\n"));
+        s.push_str(&format!(
+            "            LowPowerCounter(TimerModeLowPowerCounter<'a>),\n"
+        ));
         s.push_str("        }\n\n");
 
         s.push_str("        pub struct TimerModeTimer<'a>(pub &'a ");
