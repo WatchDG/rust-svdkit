@@ -4,6 +4,7 @@
 
 - `generated` - auto-generated code
 - `svds` - SVD files
+- `examples` - example code
 
 All operations that would create, modify, or delete files within these directories are **prohibited**.
 
