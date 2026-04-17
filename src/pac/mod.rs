@@ -2182,11 +2182,11 @@ fn register_wrapper_type(
                     out.writeln("#[inline(always)]")?;
                     if lsb == 0 {
                         out.writeln(&format!(
-                            "pub fn {method_base}_raw(&self) -> u64 {{ ((self.read() as u64)) & 0x{mask:X}u64 }}"
+                            "pub fn {method_base}_raw(&self) -> u64 {{ (self.read() as u64) & 0x{mask:X}u64 }}"
                         ))?;
                     } else {
                         out.writeln(&format!(
-                            "pub fn {method_base}_raw(&self) -> u64 {{ ((self.read() as u64) >> {lsb}) & 0x{mask:X}u64 }}"
+                            "pub fn {method_base}_raw(&self) -> u64 {{ (self.read() as u64) >> {lsb} & 0x{mask:X}u64 }}"
                         ))?;
                     }
                     out.writeln("#[inline(always)]")?;
@@ -2308,10 +2308,10 @@ fn register_wrapper_type(
                     if call == "write" && lsb == 0 && (width as u64) == reg_bits {
                         out.writeln(&format!("self.write(v.bits() as {base_ty});"))?;
                     } else if lsb == 0 {
-                        out.writeln(&format!("self.{call}((v.bits() as {base_ty}));"))?;
+                        out.writeln(&format!("self.{call}(v.bits() as {base_ty});"))?;
                     } else {
                         out.writeln(&format!("let v = (v.bits() as u64) & 0x{mask:X}u64;"))?;
-                        out.writeln(&format!("self.{call}(((v << {lsb}) as {base_ty}));"))?;
+                        out.writeln(&format!("self.{call}((v << {lsb}) as {base_ty});"))?;
                     }
                     out.dedent();
                     out.writeln("}")?;
