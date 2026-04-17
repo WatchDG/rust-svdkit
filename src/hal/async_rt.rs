@@ -39,7 +39,9 @@ pub fn generate_async_rt_rs(_device: &svd::Device) -> Result<String> {
 
     out.push_str("impl Future for Delay {\n");
     out.push_str("    type Output = ();\n\n");
-    out.push_str("    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {\n");
+    out.push_str(
+        "    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {\n",
+    );
     out.push_str("        let now = now_ms();\n");
     out.push_str("        if !self.started {\n");
     out.push_str("            self.start_ms = now;\n");
@@ -62,7 +64,9 @@ pub fn generate_async_rt_rs(_device: &svd::Device) -> Result<String> {
 
     out.push_str("impl Signal {\n");
     out.push_str("    pub const fn new() -> Self {\n");
-    out.push_str("        Self { signaled: AtomicBool::new(false), waker: UnsafeCell::new(None) }\n");
+    out.push_str(
+        "        Self { signaled: AtomicBool::new(false), waker: UnsafeCell::new(None) }\n",
+    );
     out.push_str("    }\n\n");
 
     out.push_str("    pub fn signal(&self) {\n");
@@ -89,7 +93,9 @@ pub fn generate_async_rt_rs(_device: &svd::Device) -> Result<String> {
 
     out.push_str("impl Future for Wait<'_> {\n");
     out.push_str("    type Output = ();\n\n");
-    out.push_str("    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {\n");
+    out.push_str(
+        "    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {\n",
+    );
     out.push_str("        if self.s.signaled.swap(false, Ordering::AcqRel) {\n");
     out.push_str("            return Poll::Ready(());\n");
     out.push_str("        }\n\n");
@@ -204,7 +210,9 @@ pub fn generate_async_rt_rs(_device: &svd::Device) -> Result<String> {
     out.push_str("unsafe fn waker_drop(_: *const ()) {}\n\n");
 
     out.push_str("static TASK_WAKER_VTABLE: RawWakerVTable =\n");
-    out.push_str("    RawWakerVTable::new(waker_clone, waker_wake, waker_wake_by_ref, waker_drop);\n");
+    out.push_str(
+        "    RawWakerVTable::new(waker_clone, waker_wake, waker_wake_by_ref, waker_drop);\n",
+    );
 
     Ok(out)
 }

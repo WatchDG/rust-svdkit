@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use svdkit::{Result, pac, hal};
+use svdkit::{Result, hal, pac};
 
 fn main() -> Result<()> {
     let matches = clap::Command::new("svd2rs")
@@ -47,8 +47,10 @@ fn main() -> Result<()> {
     let svd_path: PathBuf = matches.get_one::<String>("svd_file").unwrap().into();
     let out_dir: PathBuf = matches.get_one::<String>("out_dir").unwrap().into();
 
-    let generate_all =
-        !(matches.get_flag("pac") || matches.get_flag("hal") || matches.get_flag("rt") || matches.get_flag("async-rt"));
+    let generate_all = !(matches.get_flag("pac")
+        || matches.get_flag("hal")
+        || matches.get_flag("rt")
+        || matches.get_flag("async-rt"));
     let gen_pac = generate_all || matches.get_flag("pac");
     let gen_hal = generate_all || matches.get_flag("hal");
     let gen_rt = generate_all || matches.get_flag("rt");

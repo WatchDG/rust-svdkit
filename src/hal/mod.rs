@@ -78,7 +78,8 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
     }
 
     let uarts = collect_uarts(device);
-    if !uarts.is_empty() {
+    let has_uarts = !uarts.is_empty();
+    if has_uarts {
         if has_gpio_ports || !timers.is_empty() {
             out.push('\n');
         }
@@ -86,6 +87,34 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
         out.push_str("    use super::pac;\n\n");
         for u in uarts {
             out.push_str(&u.render()?);
+            out.push('\n');
+        }
+        out.push_str("}\n");
+    }
+
+    let usb_devices = collect_usb_devices(device);
+    if !usb_devices.is_empty() {
+        if has_gpio_ports || !timers.is_empty() || has_uarts {
+            out.push('\n');
+        }
+        out.push_str("pub mod usb {\n");
+        out.push_str("    use super::pac;\n\n");
+        for usb in &usb_devices {
+            out.push_str(&usb.render()?);
+            out.push('\n');
+        }
+        out.push_str("}\n");
+    }
+
+    let clocks = collect_clocks(device);
+    if !clocks.is_empty() {
+        if has_gpio_ports || !timers.is_empty() || has_uarts || !usb_devices.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("pub mod clock {\n");
+        out.push_str("    use super::pac;\n\n");
+        for c in clocks {
+            out.push_str(&c.render()?);
             out.push('\n');
         }
         out.push_str("}\n");
@@ -1277,8 +1306,7 @@ impl UartInfo {
 
         if let Some(ref hwfc_f) = self.config_hwfc_field {
             let hwfc_alias = sanitize_type_name("Hwfc");
-            let pac_hwfc_ty =
-                pac_enum_type_name_for_field(&self.periph_name, "CONFIG", hwfc_f);
+            let pac_hwfc_ty = pac_enum_type_name_for_field(&self.periph_name, "CONFIG", hwfc_f);
             if let Some(ty) = &pac_hwfc_ty {
                 s.push_str(&indent_block(
                     &format!("pub use pac::field_enums::{ty} as {hwfc_alias};\n"),
@@ -1293,8 +1321,7 @@ impl UartInfo {
 
         if let Some(ref parity_f) = self.config_parity_field {
             let parity_alias = sanitize_type_name("Parity");
-            let pac_parity_ty =
-                pac_enum_type_name_for_field(&self.periph_name, "CONFIG", parity_f);
+            let pac_parity_ty = pac_enum_type_name_for_field(&self.periph_name, "CONFIG", parity_f);
             if let Some(ty) = &pac_parity_ty {
                 s.push_str(&indent_block(
                     &format!("pub use pac::field_enums::{ty} as {parity_alias};\n"),
@@ -1712,6 +1739,877 @@ fn parse_compare_index(name_upper: &str) -> Option<usize> {
         return None;
     }
     digits.parse::<usize>().ok()
+}
+
+// --------------------------- CLOCK HAL generation ---------------------------
+
+#[derive(Debug, Clone)]
+struct ClockInfo {
+    periph_name: String,
+    periph_mod: String,
+    hal_mod: String,
+
+    field_tasks_hfclk_start: String,
+    field_tasks_hfclk_stop: String,
+    field_tasks_lfclk_start: String,
+    field_tasks_lfclk_stop: String,
+    field_tasks_cal: String,
+    field_tasks_ctstart: String,
+    field_tasks_ctstop: String,
+
+    field_events_hfclk_started: String,
+    field_events_lfclk_started: String,
+    field_events_done: String,
+    field_events_ctto: String,
+    field_events_ctstarted: String,
+
+    field_hfclkstat: String,
+    field_lfclkstat: String,
+    field_hfclksrc: Option<svd::Field>,
+    field_lfclksrc: Option<svd::Field>,
+}
+
+impl ClockInfo {
+    fn render(&self) -> Result<String> {
+        let mut s = String::new();
+
+        s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
+        s.push_str("        use super::pac;\n\n");
+        let type_name = sanitize_type_name(self.hal_mod.as_str());
+        s.push_str(&format!(
+            "        pub type {}Register = pac::{}::RegisterBlock;\n\n",
+            type_name, self.periph_mod,
+        ));
+
+        s.push_str("        use core::marker::PhantomData;\n\n");
+
+        s.push_str("        pub trait ClockState {}\n");
+        s.push_str("        pub struct Unconfigured;\n");
+        s.push_str("        pub struct HfRunning;\n");
+        s.push_str("        pub struct LfRunning;\n");
+        s.push_str("        pub struct Calibrating;\n\n");
+        s.push_str("        impl ClockState for Unconfigured {}\n");
+        s.push_str("        impl ClockState for HfRunning {}\n");
+        s.push_str("        impl ClockState for LfRunning {}\n");
+        s.push_str("        impl ClockState for Calibrating {}\n\n");
+
+        s.push_str("        #[repr(u8)]\n");
+        s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("        pub enum HfClockSource {\n");
+        s.push_str("            Xtal = 0,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        #[repr(u8)]\n");
+        s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("        pub enum LfClockSource {\n");
+        s.push_str("            Rc = 0,\n");
+        s.push_str("            Xtal = 1,\n");
+        s.push_str("            Synth = 2,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str(&format!("        pub struct Clock<'a, S: ClockState> {{\n"));
+        s.push_str(&format!("            c: &'a {}Register,\n", type_name));
+        s.push_str("            _state: PhantomData<S>,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        impl<'a, S: ClockState> Clock<'a, S> {\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_hfclk_running(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                (self.c.{}.read() >> 16) & 1 == 1\n",
+            self.field_hfclkstat
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_lfclk_running(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                (self.c.{}.read() >> 16) & 1 == 1\n",
+            self.field_lfclkstat
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_hfclk_started(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.c.{}.read() != 0\n",
+            self.field_events_hfclk_started
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_lfclk_started(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.c.{}.read() != 0\n",
+            self.field_events_lfclk_started
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_cal_done(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.c.{}.read() != 0\n",
+            self.field_events_done
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_cal_timeout(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.c.{}.read() != 0\n",
+            self.field_events_ctto
+        ));
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str(&format!("        impl<'a> Clock<'a, Unconfigured> {{\n"));
+        s.push_str("            #[inline(always)]\n");
+        s.push_str(&format!(
+            "            pub unsafe fn steal() -> Clock<'static, Unconfigured> {{\n"
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: &*pac::{}::PTR, _state: PhantomData }}\n",
+            self.periph_mod
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str(&format!(
+            "            pub fn clock() -> Clock<'static, Unconfigured> {{\n"
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: unsafe {{ &*pac::{}::PTR }}, _state: PhantomData }}\n",
+            self.periph_mod
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn start_hfclk(self) -> Clock<'a, HfRunning> {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_hfclk_start
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: self.c, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn stop_hfclk(self) -> Clock<'a, Unconfigured> {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_hfclk_stop
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: self.c, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn start_lfclk(self) -> Clock<'a, LfRunning> {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_lfclk_start
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: self.c, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn stop_lfclk(self) -> Clock<'a, Unconfigured> {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_lfclk_stop
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: self.c, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn start_calibration(self) -> Clock<'a, Calibrating> {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_cal
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: self.c, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn start_calibration_timer(self) {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_ctstart
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn stop_calibration_timer(self) {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_ctstop
+        ));
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str(&format!("        impl<'a> Clock<'a, HfRunning> {{\n"));
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn stop(self) -> Clock<'a, Unconfigured> {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_hfclk_stop
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: self.c, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str(&format!("        impl<'a> Clock<'a, LfRunning> {{\n"));
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn stop(self) -> Clock<'a, Unconfigured> {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_lfclk_stop
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: self.c, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str(&format!("        impl<'a> Clock<'a, Calibrating> {{\n"));
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn stop(self) -> Clock<'a, Unconfigured> {\n");
+        s.push_str(&format!(
+            "                self.c.{}.write(1);\n",
+            self.field_tasks_ctstop
+        ));
+        s.push_str(&format!(
+            "                Clock {{ c: self.c, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("    }\n");
+        Ok(s)
+    }
+}
+
+fn is_clock_like(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper.contains("CLOCK")
+}
+
+fn collect_clocks(device: &svd::Device) -> Vec<ClockInfo> {
+    let mut out = Vec::new();
+    for p in &device.peripherals {
+        if !is_clock_like(&p.name) {
+            continue;
+        }
+        let items = peripheral_register_items(device, p);
+        if items.is_empty() {
+            continue;
+        }
+
+        let Some((hf_start_name, _)) = find_register(items, "TASKS_HFCLKSTART") else {
+            continue;
+        };
+        let Some((hf_stop_name, _)) = find_register(items, "TASKS_HFCLKSTOP") else {
+            continue;
+        };
+        let Some((lf_start_name, _)) = find_register(items, "TASKS_LFCLKSTART") else {
+            continue;
+        };
+        let Some((lf_stop_name, _)) = find_register(items, "TASKS_LFCLKSTOP") else {
+            continue;
+        };
+        let Some((cal_name, _)) = find_register(items, "TASKS_CAL") else {
+            continue;
+        };
+        let Some((ctstart_name, _)) = find_register(items, "TASKS_CTSTART") else {
+            continue;
+        };
+        let Some((ctstop_name, _)) = find_register(items, "TASKS_CTSTOP") else {
+            continue;
+        };
+        let Some((hf_started_name, _)) = find_register(items, "EVENTS_HFCLKSTARTED") else {
+            continue;
+        };
+        let Some((lf_started_name, _)) = find_register(items, "EVENTS_LFCLKSTARTED") else {
+            continue;
+        };
+        let Some((done_name, _)) = find_register(items, "EVENTS_DONE") else {
+            continue;
+        };
+        let Some((ctto_name, _)) = find_register(items, "EVENTS_CTTO") else {
+            continue;
+        };
+        let Some((ctstarted_name, _)) = find_register(items, "EVENTS_CTSTARTED") else {
+            continue;
+        };
+        let Some((hfstat_name, hfstat_reg)) = find_register(items, "HFCLKSTAT") else {
+            continue;
+        };
+        let Some((lfstat_name, lfstat_reg)) = find_register(items, "LFCLKSTAT") else {
+            continue;
+        };
+
+        let hfclksrc_field = hfstat_reg
+            .field
+            .iter()
+            .find(|f| {
+                f.name.to_ascii_uppercase() == "SRC"
+                    || f.name.to_ascii_uppercase().ends_with("_SRC")
+            })
+            .cloned();
+
+        let lfclksrc_field = lfstat_reg
+            .field
+            .iter()
+            .find(|f| {
+                f.name.to_ascii_uppercase() == "SRC"
+                    || f.name.to_ascii_uppercase().ends_with("_SRC")
+            })
+            .cloned();
+
+        out.push(ClockInfo {
+            periph_name: p.name.clone(),
+            periph_mod: sanitize_module_name(&p.name),
+            hal_mod: sanitize_field_name(&p.name),
+
+            field_tasks_hfclk_start: sanitize_field_name(&hf_start_name),
+            field_tasks_hfclk_stop: sanitize_field_name(&hf_stop_name),
+            field_tasks_lfclk_start: sanitize_field_name(&lf_start_name),
+            field_tasks_lfclk_stop: sanitize_field_name(&lf_stop_name),
+            field_tasks_cal: sanitize_field_name(&cal_name),
+            field_tasks_ctstart: sanitize_field_name(&ctstart_name),
+            field_tasks_ctstop: sanitize_field_name(&ctstop_name),
+
+            field_events_hfclk_started: sanitize_field_name(&hf_started_name),
+            field_events_lfclk_started: sanitize_field_name(&lf_started_name),
+            field_events_done: sanitize_field_name(&done_name),
+            field_events_ctto: sanitize_field_name(&ctto_name),
+            field_events_ctstarted: sanitize_field_name(&ctstarted_name),
+
+            field_hfclkstat: sanitize_field_name(&hfstat_name),
+            field_lfclkstat: sanitize_field_name(&lfstat_name),
+            field_hfclksrc: hfclksrc_field,
+            field_lfclksrc: lfclksrc_field,
+        });
+    }
+    out
+}
+
+// --------------------------- USB HAL generation ---------------------------
+
+#[derive(Debug, Clone)]
+struct UsbInfo {
+    periph_name: String,
+    periph_mod: String,
+    hal_mod: String,
+
+    field_enable: String,
+    field_usb_pullup: String,
+    field_epinen: String,
+    field_epouten: String,
+
+    field_tasks_startein: String,
+    field_tasks_staroutep: String,
+
+    field_events_ep0setup: String,
+    field_events_ep0datadone: String,
+    field_events_endepin: String,
+    field_events_endepout: String,
+    field_events_usbreset: String,
+    field_events_usbevent: String,
+}
+
+impl UsbInfo {
+    fn render(&self) -> Result<String> {
+        let mut s = String::new();
+        let usb_ty = sanitize_type_name(&self.periph_mod);
+
+        s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
+        s.push_str("        use super::pac;\n\n");
+        s.push_str(&format!(
+            "        pub type {usb_ty} = pac::{}::RegisterBlock;\n\n",
+            self.periph_mod,
+        ));
+
+        s.push_str("        use core::marker::PhantomData;\n\n");
+
+        s.push_str("        pub trait UsbState {}\n");
+        s.push_str("        pub struct Unconfigured;\n");
+        s.push_str("        pub struct Disabled;\n");
+        s.push_str("        pub struct Enabled;\n");
+        s.push_str("        pub struct Addressed;\n");
+        s.push_str("        pub struct Configured;\n");
+        s.push_str("        pub struct Suspended;\n");
+        s.push_str("\n");
+        s.push_str("        impl UsbState for Unconfigured {}\n");
+        s.push_str("        impl UsbState for Disabled {}\n");
+        s.push_str("        impl UsbState for Enabled {}\n");
+        s.push_str("        impl UsbState for Addressed {}\n");
+        s.push_str("        impl UsbState for Configured {}\n");
+        s.push_str("        impl UsbState for Suspended {}\n\n");
+
+        s.push_str("        #[repr(u8)]\n");
+        s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("        pub enum LineState {\n");
+        s.push_str("            NoSignal = 0,\n");
+        s.push_str("            Dtr = 1,\n");
+        s.push_str("            Rts = 2,\n");
+        s.push_str("            DtrRts = 3,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        #[repr(u8)]\n");
+        s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("        pub enum UsbClass {\n");
+        s.push_str("            None = 0,\n");
+        s.push_str("            Audio = 1,\n");
+        s.push_str("            Cdc = 2,\n");
+        s.push_str("            Hid = 3,\n");
+        s.push_str("            MassStorage = 4,\n");
+        s.push_str("            Wireless = 5,\n");
+        s.push_str("            SmartCard = 6,\n");
+        s.push_str("            ContentSecurity = 7,\n");
+        s.push_str("            Video = 8,\n");
+        s.push_str("            PersonalHealthcare = 9,\n");
+        s.push_str("            AudioVideo = 10,\n");
+        s.push_str("            Diagnostic = 11,\n");
+        s.push_str("            CdcControl = 12,\n");
+        s.push_str("            CdcData = 13,\n");
+        s.push_str("            Irda = 16,\n");
+        s.push_str("            Ethernet = 17,\n");
+        s.push_str("            Hssh = 18,\n");
+        s.push_str("            Sync = 19,\n");
+        s.push_str("            Wdm = 20,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        #[repr(u8)]\n");
+        s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("        pub enum UsbSubClass {\n");
+        s.push_str("            None = 0,\n");
+        s.push_str("            AtFcx = 1,\n");
+        s.push_str("            AtCdcDirectLine = 2,\n");
+        s.push_str("            EthernetNetworking = 6,\n");
+        s.push_str("            WirelessHandset = 7,\n");
+        s.push_str("            DeviceManagement = 8,\n");
+        s.push_str("            MobileBroadband = 9,\n");
+        s.push_str("            Mcap = 10,\n");
+        s.push_str("            CdcData = 11,\n");
+        s.push_str("            Audio = 12,\n");
+        s.push_str("            CdcBridge = 13,\n");
+        s.push_str("            CdcAcmodem = 14,\n");
+        s.push_str("            VendorSpecific = 255,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        #[repr(u8)]\n");
+        s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("        pub enum UsbProtocol {\n");
+        s.push_str("            None = 0,\n");
+        s.push_str("            V250 = 1,\n");
+        s.push_str("            Q931 = 2,\n");
+        s.push_str("            EuroIsdn = 3,\n");
+        s.push_str("            Cmadtr = 4,\n");
+        s.push_str("            HostBased = 5,\n");
+        s.push_str("            Transparency = 6,\n");
+        s.push_str("            UsbIf = 16,\n");
+        s.push_str("            VendorSpecific = 255,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str(&format!("        pub struct Usb<'a, S: UsbState> {{\n"));
+        s.push_str(&format!("            usb: &'a {usb_ty},\n"));
+        s.push_str("            _state: PhantomData<S>,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        impl<'a, S: UsbState> Usb<'a, S> {\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_enabled(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.read() == 1\n",
+            self.field_enable
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_ep0_setup(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.read() != 0\n",
+            self.field_events_ep0setup
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_ep0_data_done(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.read() != 0\n",
+            self.field_events_ep0datadone
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_usb_reset(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.read() != 0\n",
+            self.field_events_usbreset
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_usb_event(&self) -> bool {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.read() != 0\n",
+            self.field_events_usbevent
+        ));
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str(&format!("        impl<'a> Usb<'a, Unconfigured> {{\n"));
+        s.push_str("            #[inline(always)]\n");
+        s.push_str(&format!(
+            "            pub unsafe fn steal() -> Usb<'static, Unconfigured> {{\n"
+        ));
+        s.push_str(&format!(
+            "                Usb {{ usb: &*pac::{}::PTR, _state: PhantomData }}\n",
+            self.periph_mod
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str(&format!(
+            "            pub fn usb() -> Usb<'static, Unconfigured> {{\n"
+        ));
+        s.push_str(&format!(
+            "                Usb {{ usb: unsafe {{ &*pac::{}::PTR }}, _state: PhantomData }}\n",
+            self.periph_mod
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn enable(self) -> Usb<'a, Disabled> {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(1);\n",
+            self.field_enable
+        ));
+        s.push_str(&format!(
+            "                Usb {{ usb: self.usb, _state: PhantomData }}\n"
+        ));
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str(&format!("        impl<'a> Usb<'a, Disabled> {{\n"));
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn connect_pullup(&self) {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(1);\n",
+            self.field_usb_pullup
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn disconnect_pullup(&self) {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(0);\n",
+            self.field_usb_pullup
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn enable_ep0(&self) {\n");
+        s.push_str(&format!(
+            "                let mut epinen = self.usb.{}.read();\n",
+            self.field_epinen
+        ));
+        s.push_str("                epinen |= 1u32;\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(epinen);\n",
+            self.field_epinen
+        ));
+        s.push_str(&format!(
+            "                let mut epouten = self.usb.{}.read();\n",
+            self.field_epouten
+        ));
+        s.push_str("                epouten |= 1u32;\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(epouten);\n",
+            self.field_epouten
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str(
+            "            pub fn enable_data_endpoints(&self, data_ep: u8, notify_ep: u8) {\n",
+        );
+        s.push_str("                if data_ep > 7 || notify_ep > 7 {\n");
+        s.push_str("                    return;\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                let mut epinen = self.usb.{}.read();\n",
+            self.field_epinen
+        ));
+        s.push_str(
+            "                epinen |= (1u32 << data_ep) | (1u32 << notify_ep);\n",
+        );
+        s.push_str(&format!(
+            "                self.usb.{}.write(epinen);\n",
+            self.field_epinen
+        ));
+        s.push_str(&format!(
+            "                let mut epouten = self.usb.{}.read();\n",
+            self.field_epouten
+        ));
+        s.push_str("                epouten |= 1u32 << data_ep;\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(epouten);\n",
+            self.field_epouten
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn start_in_endpoint(&self, ep_num: usize) {\n");
+        s.push_str("                if ep_num > 7 {\n");
+        s.push_str("                    return;\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                self.usb.tasks_startepin__s_[ep_num].write(1);\n",
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn start_out_endpoint(&self, ep_num: usize) {\n");
+        s.push_str("                if ep_num > 7 {\n");
+        s.push_str("                    return;\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                self.usb.tasks_startepout__s_[ep_num].write(1);\n",
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_endpoint_in_ready(&self, ep_num: usize) -> bool {\n");
+        s.push_str("                if ep_num > 7 {\n");
+        s.push_str("                    return false;\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                self.usb.{}[ep_num].read() != 0\n",
+            self.field_events_endepin
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_endpoint_out_ready(&self, ep_num: usize) -> bool {\n");
+        s.push_str("                if ep_num > 7 {\n");
+        s.push_str("                    return false;\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                self.usb.{}[ep_num].read() != 0\n",
+            self.field_events_endepout
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn clear_endpoint_in_ready(&self, ep_num: usize) {\n");
+        s.push_str("                if ep_num > 7 {\n");
+        s.push_str("                    return;\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                self.usb.{}[ep_num].write(0);\n",
+            self.field_events_endepin
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn clear_endpoint_out_ready(&self, ep_num: usize) {\n");
+        s.push_str("                if ep_num > 7 {\n");
+        s.push_str("                    return;\n");
+        s.push_str("                }\n");
+        s.push_str(&format!(
+            "                self.usb.{}[ep_num].write(0);\n",
+            self.field_events_endepout
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn clear_ep0_setup(&self) {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(0);\n",
+            self.field_events_ep0setup
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn clear_ep0_data_done(&self) {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(0);\n",
+            self.field_events_ep0datadone
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn clear_usb_reset(&self) {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(0);\n",
+            self.field_events_usbreset
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn clear_usb_event(&self) {\n");
+        s.push_str(&format!(
+            "                self.usb.{}.write(0);\n",
+            self.field_events_usbevent
+        ));
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn ep0_write_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
+        s.push_str("                if maxcnt > 64 {\n");
+        s.push_str("                    return;\n");
+        s.push_str("                }\n");
+        s.push_str("                unsafe {\n");
+        s.push_str("                    let ep0 = &*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<pac::EpinS>());\n");
+        s.push_str("                    ep0.ptr.write(ptr as u32);\n");
+        s.push_str("                    ep0.maxcnt.write(maxcnt as u32);\n");
+        s.push_str("                }\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn ep0_read_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
+        s.push_str("                if maxcnt > 64 {\n");
+        s.push_str("                    return;\n");
+        s.push_str("                }\n");
+        s.push_str("                unsafe {\n");
+        s.push_str("                    let ep0 = &*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<pac::EpoutS>());\n");
+        s.push_str("                    ep0.ptr.write(ptr as u32);\n");
+        s.push_str("                    ep0.maxcnt.write(maxcnt as u32);\n");
+        s.push_str("                }\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
+        s.push_str("                unsafe { (&*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<pac::EpoutS>())).amount.read() }\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
+        s.push_str("                unsafe { (&*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<pac::EpinS>())).amount.read() }\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn stall_ep0(&self) {\n");
+        s.push_str("                self.usb.tasks_ep0stall.write(1);\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn ep0_receive_out(&self) {\n");
+        s.push_str("                self.usb.tasks_ep0rcvout.write(1);\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn ep0_send_status(&self) {\n");
+        s.push_str("                self.usb.tasks_ep0status.write(1);\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn get_setup_packet(&self, bm_request_type: &mut u8, b_request: &mut u8, w_value: &mut u16, w_index: &mut u16, w_length: &mut u16) {\n");
+        s.push_str("                let wvalueh = self.usb.wvalueh.read();\n");
+        s.push_str("                let wvaluel = self.usb.wvaluel.read();\n");
+        s.push_str("                let windexh = self.usb.windexh.read();\n");
+        s.push_str("                let windexl = self.usb.windexl.read();\n");
+        s.push_str("                let wlengthh = self.usb.wlengthh.read();\n");
+        s.push_str("                let wlengthl = self.usb.wlengthl.read();\n\n");
+
+        s.push_str("                *bm_request_type = self.usb.bmrequesttype.read() as u8;\n");
+        s.push_str("                *b_request = self.usb.brequest.read() as u8;\n");
+        s.push_str("                *w_value = ((wvalueh as u16) << 8) | (wvaluel as u16);\n");
+        s.push_str("                *w_index = ((windexh as u16) << 8) | (windexl as u16);\n");
+        s.push_str("                *w_length = ((wlengthh as u16) << 8) | (wlengthl as u16);\n");
+        s.push_str("            }\n");
+        s.push_str("        }\n");
+
+        s.push_str("    }\n");
+        Ok(s)
+    }
+}
+
+fn is_usbd_like(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper.starts_with("USBD")
+}
+
+fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
+    let mut out = Vec::new();
+    for p in &device.peripherals {
+        if !is_usbd_like(&p.name) {
+            continue;
+        }
+        let items = peripheral_register_items(device, p);
+        if items.is_empty() {
+            continue;
+        }
+
+        let Some((enable_name, _)) = find_register(items, "ENABLE") else {
+            continue;
+        };
+        let Some((usb_pullup_name, _)) = find_register(items, "USBPULLUP") else {
+            continue;
+        };
+        let Some((epinen_name, _)) = find_register(items, "EPINEN") else {
+            continue;
+        };
+        let Some((epouten_name, _)) = find_register(items, "EPOUTEN") else {
+            continue;
+        };
+        let Some((tasks_startein_name, _)) = find_register(items, "TASKS_STARTEPIN") else {
+            continue;
+        };
+        let Some((tasks_staroutep_name, _)) = find_register(items, "TASKS_STARTEPOUT") else {
+            continue;
+        };
+        let Some((events_ep0setup_name, _)) = find_register(items, "EVENTS_EP0SETUP") else {
+            continue;
+        };
+        let Some((events_ep0datadone_name, _)) = find_register(items, "EVENTS_EP0DATADONE") else {
+            continue;
+        };
+        let Some((events_endepin_name, _)) = find_register(items, "EVENTS_ENDEPIN") else {
+            continue;
+        };
+        let Some((events_endepout_name, _)) = find_register(items, "EVENTS_ENDEPOUT") else {
+            continue;
+        };
+        let Some((events_usbreset_name, _)) = find_register(items, "EVENTS_USBRESET") else {
+            continue;
+        };
+        let Some((events_usbevent_name, _)) = find_register(items, "EVENTS_USBEVENT") else {
+            continue;
+        };
+
+        out.push(UsbInfo {
+            periph_name: p.name.clone(),
+            periph_mod: sanitize_module_name(&p.name),
+            hal_mod: sanitize_field_name(&p.name),
+
+            field_enable: sanitize_field_name(&enable_name),
+            field_usb_pullup: sanitize_field_name(&usb_pullup_name),
+            field_epinen: sanitize_field_name(&epinen_name),
+            field_epouten: sanitize_field_name(&epouten_name),
+
+            field_tasks_startein: sanitize_field_name(&tasks_startein_name),
+            field_tasks_staroutep: sanitize_field_name(&tasks_staroutep_name),
+
+            field_events_ep0setup: sanitize_field_name(&events_ep0setup_name),
+            field_events_ep0datadone: sanitize_field_name(&events_ep0datadone_name),
+            field_events_endepin: sanitize_field_name(&events_endepin_name),
+            field_events_endepout: sanitize_field_name(&events_endepout_name),
+            field_events_usbreset: sanitize_field_name(&events_usbreset_name),
+            field_events_usbevent: sanitize_field_name(&events_usbevent_name),
+        });
+    }
+    out
 }
 
 fn find_register_prefer_exact<'a>(
