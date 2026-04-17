@@ -494,7 +494,7 @@ fn generate_cortex_m_rs(device: &svd::Device) -> Result<String> {
     out.writeln("}")?;
 
     out.writeln("#[inline(always)]")?;
-    out.writeln("pub unsafe fn pend_irq(irq: u32) {")?;
+    out.writeln("pub unsafe fn pending_irq(irq: u32) {")?;
     out.indent();
     out.writeln("let idx = (irq >> 5) as usize;")?;
     out.writeln("let bit = 1u32 << (irq & 31);")?;
@@ -504,7 +504,7 @@ fn generate_cortex_m_rs(device: &svd::Device) -> Result<String> {
     out.writeln("}")?;
 
     out.writeln("#[inline(always)]")?;
-    out.writeln("pub unsafe fn unpend_irq(irq: u32) {")?;
+    out.writeln("pub unsafe fn unpending_irq(irq: u32) {")?;
     out.indent();
     out.writeln("let idx = (irq >> 5) as usize;")?;
     out.writeln("let bit = 1u32 << (irq & 31);")?;
