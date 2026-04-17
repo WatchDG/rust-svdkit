@@ -109,7 +109,7 @@ impl GpioPortInfo {
         ));
         s.push_str("        use core::marker::PhantomData;\n\n");
 
-        s.push_str("        pub trait GpioState {}\n");
+        s.push_str("        pub trait PinState {}\n");
         s.push_str("        pub struct Unconfigured;\n\n");
         s.push_str("        impl GpioState for Unconfigured {}\n\n");
 
