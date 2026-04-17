@@ -13,7 +13,7 @@ mod nrf52840_hal {
     include!("../generated/nrf52840/nrf52840_hal.rs");
 }
 
-fn main() {
+fn example_gpio_pin_output() {
     use nrf52840_hal::gpio::p0;
 
     const LED_PIN: u8 = 15;
@@ -35,4 +35,34 @@ fn main() {
 
     out.set_high();
     out.set_low();
+}
+
+fn example_timer_config() {
+    use nrf52840_hal::timer::timer0;
+
+    let prescaler = 4u32;
+    let ticks_per_us = 16u32 >> prescaler;
+    let cc0 = 1u32 * ticks_per_us;
+
+    let configured = timer0::timer()
+        .configure()
+        .mode(timer0::Mode::Timer)
+        .bitmode(timer0::Bitmode::_32bit)
+        .prescaler(prescaler)
+        .cc(0, cc0)
+        .clear_on_compare(0, true)
+        .enable_interrupt_on_compare(0)
+        .apply();
+
+    match configured {
+        timer0::TimerConfigured::Timer(t) => {
+            let _ = t.clear_event_compare(0).clear().start();
+        }
+        _ => loop {},
+    }
+}
+
+fn main() {
+    example_gpio_pin_output();
+    example_timer_config();
 }
