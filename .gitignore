@@ -3,3 +3,4 @@
 /generated
 *.md
 !/.trae/rules/*.md
+!/.trae/skills/**/*.md
