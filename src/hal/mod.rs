@@ -5,6 +5,8 @@
 use crate::{Result, svd};
 use std::path::Path;
 
+pub mod async_rt;
+
 /// A single generated file (same shape as `pac::GeneratedFile`).
 #[derive(Debug, Clone)]
 pub struct GeneratedFile {
@@ -1794,7 +1796,7 @@ fn parse_enum_u64(s: &str) -> Option<u64> {
     }
 }
 
-fn sanitize_file_stem(s: &str) -> String {
+pub fn sanitize_file_stem(s: &str) -> String {
     let mut out = String::new();
     for ch in s.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {

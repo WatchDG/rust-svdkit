@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use svdkit::{Result, pac};
+use svdkit::{Result, pac, hal};
 
 fn main() -> Result<()> {
     let matches = clap::Command::new("svd2rs")
@@ -36,16 +36,23 @@ fn main() -> Result<()> {
                 .action(clap::ArgAction::SetTrue)
                 .help("Generate runtime files (startup, linker script)"),
         )
+        .arg(
+            clap::Arg::new("async-rt")
+                .long("async-rt")
+                .action(clap::ArgAction::SetTrue)
+                .help("Generate async runtime files"),
+        )
         .get_matches();
 
     let svd_path: PathBuf = matches.get_one::<String>("svd_file").unwrap().into();
     let out_dir: PathBuf = matches.get_one::<String>("out_dir").unwrap().into();
 
     let generate_all =
-        !(matches.get_flag("pac") || matches.get_flag("hal") || matches.get_flag("rt"));
+        !(matches.get_flag("pac") || matches.get_flag("hal") || matches.get_flag("rt") || matches.get_flag("async-rt"));
     let gen_pac = generate_all || matches.get_flag("pac");
     let gen_hal = generate_all || matches.get_flag("hal");
     let gen_rt = generate_all || matches.get_flag("rt");
+    let gen_async_rt = generate_all || matches.get_flag("async-rt");
 
     println!("Parsing SVD file: {}", svd_path.display());
     let device = svdkit::parse_svd_file(&svd_path)?;
@@ -75,6 +82,15 @@ fn main() -> Result<()> {
 
     if gen_hal {
         let path = svdkit::hal::write_device_hal_file(&device, &out_dir)?;
+        if let Some(os_name) = path.file_name() {
+            if let Some(name) = os_name.to_str() {
+                println!("  Generated: {}", name);
+            }
+        }
+    }
+
+    if gen_async_rt {
+        let path = hal::async_rt::write_async_rt_file(&device, &out_dir)?;
         if let Some(os_name) = path.file_name() {
             if let Some(name) = os_name.to_str() {
                 println!("  Generated: {}", name);
