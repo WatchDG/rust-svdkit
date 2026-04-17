@@ -111,7 +111,7 @@ impl GpioPortInfo {
 
         s.push_str("        pub trait PinState {}\n");
         s.push_str("        pub struct Unconfigured;\n\n");
-        s.push_str("        impl GpioState for Unconfigured {}\n\n");
+        s.push_str("        impl PinState for Unconfigured {}\n\n");
 
         s.push_str("        #[repr(u8)]\n");
         s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
@@ -212,11 +212,13 @@ impl GpioPortInfo {
             });
 
         s.push_str(&format!(
-            "        pub struct Pin<'a, S: GpioState> {{\n            port: &'a {port_ty},\n            pin: u8,\n            _state: PhantomData<S>,\n        }}\n\n"
+            "        pub struct Pin<'a, S: PinState> {{\n            port: &'a {port_ty},\n            pin: u8,\n            _state: PhantomData<S>,\n        }}\n\n"
         ));
 
         s.push_str("        #[inline(always)]\n");
-        s.push_str("        pub unsafe fn pin(pin: u8) -> Pin<'_, Unconfigured> {\n");
+        s.push_str(&format!(
+            "        pub unsafe fn pin(pin: u8) -> Pin<'static, Unconfigured> {{\n"
+        ));
         s.push_str(&format!(
             "            Pin {{ port: &*pac::{}::PTR, pin, _state: PhantomData }}\n",
             self.periph_mod
@@ -249,30 +251,71 @@ impl GpioPortInfo {
 
         // dir()
         if let Some((lsb, mask, out_val)) = dir_info {
-            s.push_str(&format!(
-                "            #[inline(always)]\n            pub fn dir(self, v: Dir) -> Self {{\n                let output = (v as u32) == {out_val}u32;\n                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n                PinConfigurator {{ port: self.port, pin: self.pin, cnf, output }}\n            }}\n\n"
-            ));
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn dir(self, v: Dir) -> Self {\n");
+            s.push_str(&format!("                let output = (v as u32) == {out_val}u32;\n"));
+            if lsb == 0 {
+                s.push_str(&format!(
+                    "                let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
+                ));
+            } else {
+                s.push_str(&format!(
+                    "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                ));
+            }
+            s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output }\n");
+            s.push_str("            }\n\n");
         }
 
         // pull()
         if let Some((lsb, mask)) = pull_info {
-            s.push_str(&format!(
-                "            #[inline(always)]\n            pub fn pull(self, v: Pull) -> Self {{\n                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n                PinConfigurator {{ port: self.port, pin: self.pin, cnf, output: self.output }}\n            }}\n\n"
-            ));
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn pull(self, v: Pull) -> Self {\n");
+            if lsb == 0 {
+                s.push_str(&format!(
+                    "                let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
+                ));
+            } else {
+                s.push_str(&format!(
+                    "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                ));
+            }
+            s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
+            s.push_str("            }\n\n");
         }
 
         // drive()
         if let Some((lsb, mask)) = drive_info {
-            s.push_str(&format!(
-                "            #[inline(always)]\n            pub fn drive(self, v: Drive) -> Self {{\n                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n                PinConfigurator {{ port: self.port, pin: self.pin, cnf, output: self.output }}\n            }}\n\n"
-            ));
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn drive(self, v: Drive) -> Self {\n");
+            if lsb == 0 {
+                s.push_str(&format!(
+                    "                let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
+                ));
+            } else {
+                s.push_str(&format!(
+                    "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                ));
+            }
+            s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
+            s.push_str("            }\n\n");
         }
 
         // sense()
         if let Some((lsb, mask)) = sense_info {
-            s.push_str(&format!(
-                "            #[inline(always)]\n            pub fn sense(self, v: Sense) -> Self {{\n                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n                PinConfigurator {{ port: self.port, pin: self.pin, cnf, output: self.output }}\n            }}\n\n"
-            ));
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn sense(self, v: Sense) -> Self {\n");
+            if lsb == 0 {
+                s.push_str(&format!(
+                    "                let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
+                ));
+            } else {
+                s.push_str(&format!(
+                    "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                ));
+            }
+            s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
+            s.push_str("            }\n\n");
         }
 
         // apply(): writes CNF, returns PinConfigured (Input or Output branch).
@@ -685,9 +728,15 @@ impl TimerInfo {
             s.push_str(&format!(
                 "                        let v: u32 = if enable {{ 1 }} else {{ 0 }};\n"
             ));
-            s.push_str(&format!(
-                "                        new = (new & !(0x{mask:X}u32 << {lsb})) | ((v & 0x{mask:X}u32) << {lsb});\n"
-            ));
+            if lsb == 0 {
+                s.push_str(&format!(
+                    "                        new = (new & !0x{mask:X}u32) | (v & 0x{mask:X}u32);\n"
+                ));
+            } else {
+                s.push_str(&format!(
+                    "                        new = (new & !(0x{mask:X}u32 << {lsb})) | ((v & 0x{mask:X}u32) << {lsb});\n"
+                ));
+            }
             s.push_str("                    }\n");
         }
         s.push_str("                    _ => {}\n");

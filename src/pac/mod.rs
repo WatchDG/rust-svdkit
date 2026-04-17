@@ -2154,9 +2154,15 @@ fn register_wrapper_type(
                         out.writeln(&format!("/// {}", doc_escape(d)))?;
                     }
                     out.writeln("#[inline(always)]")?;
-                    out.writeln(&format!(
-                        "pub fn {method_base}_raw(&self) -> u64 {{ ((self.read() as u64) >> {lsb}) & 0x{mask:X}u64 }}"
-                    ))?;
+                    if lsb == 0 {
+                        out.writeln(&format!(
+                            "pub fn {method_base}_raw(&self) -> u64 {{ ((self.read() as u64)) & 0x{mask:X}u64 }}"
+                        ))?;
+                    } else {
+                        out.writeln(&format!(
+                            "pub fn {method_base}_raw(&self) -> u64 {{ ((self.read() as u64) >> {lsb}) & 0x{mask:X}u64 }}"
+                        ))?;
+                    }
                     out.writeln("#[inline(always)]")?;
                     out.writeln(&format!(
                         "pub fn {method_base}(&self) -> Option<field_enums::{enum_ty}> {{ field_enums::{enum_ty}::from_bits(self.{method_base}_raw() as {repr}) }}",
@@ -2193,9 +2199,13 @@ fn register_wrapper_type(
                     out.indent();
                     out.writeln(&format!("let cur = self.read() as u64;"))?;
                     out.writeln(&format!("let v = (v.bits() as u64) & 0x{mask:X}u64;"))?;
-                    out.writeln(&format!(
-                        "let new = (cur & !(0x{mask:X}u64 << {lsb})) | (v << {lsb});"
-                    ))?;
+                    if lsb == 0 {
+                        out.writeln(&format!("let new = (cur & !0x{mask:X}u64) | v;"))?;
+                    } else {
+                        out.writeln(&format!(
+                            "let new = (cur & !(0x{mask:X}u64 << {lsb})) | (v << {lsb});"
+                        ))?;
+                    }
                     out.writeln(&format!("self.write(new as {base_ty});"))?;
                     out.dedent();
                     out.writeln("}")?;
@@ -2271,6 +2281,8 @@ fn register_wrapper_type(
                     out.indent();
                     if call == "write" && lsb == 0 && (width as u64) == reg_bits {
                         out.writeln(&format!("self.write(v.bits() as {base_ty});"))?;
+                    } else if lsb == 0 {
+                        out.writeln(&format!("self.{call}((v.bits() as {base_ty}));"))?;
                     } else {
                         out.writeln(&format!("let v = (v.bits() as u64) & 0x{mask:X}u64;"))?;
                         out.writeln(&format!("self.{call}(((v << {lsb}) as {base_ty}));"))?;
