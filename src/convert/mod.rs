@@ -1063,16 +1063,6 @@ fn parse_bool_text(e: &xml::Element, field: &str) -> Result<bool> {
     }
 }
 
-fn parse_u32_text(e: &xml::Element, field: &str) -> Result<u32> {
-    let t = text_required(e, field)?;
-    t.parse::<u32>().map_err(|_| {
-        Error::validation(
-            e.loc,
-            format!("invalid integer (u32) for <{}>: {}", field, t),
-        )
-    })
-}
-
 fn parse_i64_text(e: &xml::Element, field: &str) -> Result<i64> {
     let t = text_required(e, field)?;
     t.parse::<i64>().map_err(|_| {
