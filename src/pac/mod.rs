@@ -77,10 +77,11 @@ pub fn generate_device_rs_with_options(
     out.writeln(&format!("// Device: {}", device.name))?;
     out.writeln(&format!("// Version: {}", device.version))?;
     out.writeln("//")?;
-    out.writeln("#![allow(non_snake_case)]")?;
-    out.writeln("#![allow(non_camel_case_types)]")?;
-    out.writeln("#![allow(dead_code)]")?;
-    out.writeln("#![allow(unused_imports)]")?;
+    out.writeln("#[allow(non_snake_case)]")?;
+    out.writeln("#[allow(non_camel_case_types)]")?;
+    out.writeln("#[allow(dead_code)]")?;
+    out.writeln("#[allow(unused_imports)]")?;
+    out.writeln("#[allow(unsafe_op_in_unsafe_fn)]")?;
     out.writeln("")?;
 
     // Minimal volatile register wrappers (dependency-free).
