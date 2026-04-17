@@ -1,5 +1,6 @@
 /target
 /svds
 /src/main.rs
-/nrf*
+/generated
 *.md
+!/.trae/rules/*.md

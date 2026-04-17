@@ -109,17 +109,9 @@ impl GpioPortInfo {
         ));
         s.push_str("        use core::marker::PhantomData;\n\n");
 
-        s.push_str("        pub struct InputMode;\n");
-        s.push_str("        pub struct OutputMode;\n\n");
-        s.push_str("        pub struct UnknownMode;\n\n");
-
         s.push_str("        pub trait GpioState {}\n");
-        s.push_str("        pub struct Unconfigured;\n");
-        s.push_str("        pub struct Configured;\n");
-        s.push_str("        pub struct Enabled;\n\n");
-        s.push_str("        impl GpioState for Unconfigured {}\n");
-        s.push_str("        impl GpioState for Configured {}\n");
-        s.push_str("        impl GpioState for Enabled {}\n\n");
+        s.push_str("        pub struct Unconfigured;\n\n");
+        s.push_str("        impl GpioState for Unconfigured {}\n\n");
 
         s.push_str("        #[repr(u8)]\n");
         s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
@@ -135,240 +127,220 @@ impl GpioPortInfo {
         s.push_str(&format!("            &*pac::{}::PTR\n", self.periph_mod));
         s.push_str("        }\n\n");
 
-        // Small per-field enums extracted from SVD (only for known field names).
-        // If a field lacks usable enumeratedValues, we fall back to raw bits setters.
-        let mut enum_reexports_src = String::new();
-        let mut local_enums_src = String::new();
-        let mut builder_methods_generic = String::new();
-        let mut builder_methods_input_only = String::new();
-        let mut pull_exists = false;
-        let mut pull_has_ty = false;
+        // Re-export or generate field enums from SVD: Dir, Drive, Sense, Pull.
+        // Each tuple is (field_name, alias_name, extra_code_after_enum).
+        let field_enums = [
+            ("DIR", "Dir", String::new()),
+            ("DRIVE", "Drive", String::new()),
+            ("SENSE", "Sense", String::new()),
+            ("PULL", "Pull", String::new()),
+        ];
 
-        let input_disconnect = self
-            .pin_fields
-            .iter()
-            .find(|f| f.name.eq_ignore_ascii_case("INPUT"))
-            .map(|f| {
-                let (lsb, width) = field_lsb_width(f);
-                let mask: u32 = if width >= 32 {
-                    u32::MAX
-                } else {
-                    ((1u64 << width) - 1) as u32
-                };
-                let disconnect = input_disconnect_value(f);
-                InputDisconnectInfo {
-                    lsb,
-                    mask,
-                    disconnect,
-                }
-            });
-
-        for fname in ["DIR", "INPUT", "PULL", "DRIVE", "SENSE"] {
-            if let Some(f) = self
+        let mut generated_any = false;
+        for (fname, alias, extra) in field_enums {
+            let f = match self
                 .pin_fields
                 .iter()
                 .find(|f| f.name.eq_ignore_ascii_case(fname))
             {
-                let alias = sanitize_type_name(fname);
-                let pac_enum_ty =
-                    pac_enum_type_name_for_field(&self.periph_name, &self.pin_cnf_reg_path, f);
-                let has_enum = if let Some(ty) = &pac_enum_ty {
-                    enum_reexports_src
-                        .push_str(&format!("pub use pac::field_enums::{ty} as {alias};\n"));
-                    true
-                } else if let Some(e) = render_field_enum(fname, f) {
-                    local_enums_src.push_str(&e);
-                    local_enums_src.push('\n');
-                    true
-                } else {
-                    false
-                };
+                Some(f) => f,
+                None => continue,
+            };
 
-                if fname.eq_ignore_ascii_case("PULL") {
-                    pull_exists = true;
-                    pull_has_ty = has_enum;
+            let pac_enum_ty =
+                pac_enum_type_name_for_field(&self.periph_name, &self.pin_cnf_reg_path, f);
+            if let Some(ty) = &pac_enum_ty {
+                s.push_str(&format!(
+                    "        pub use pac::field_enums::{} as {};\n",
+                    ty, alias
+                ));
+                generated_any = true;
+            } else if let Some(e) = render_field_enum(fname, f) {
+                s.push_str(&indent_block(&e, 8));
+                if !extra.is_empty() {
+                    s.push_str(&indent_block(&extra, 8));
                 }
-
-                let setter = render_builder_setter(
-                    &self.field_pin_cnf,
-                    fname,
-                    f,
-                    has_enum,
-                    input_disconnect.as_ref(),
-                );
-                if fname.eq_ignore_ascii_case("INPUT") {
-                    builder_methods_input_only.push_str(&setter);
-                } else {
-                    builder_methods_generic.push_str(&setter);
-                }
+                generated_any = true;
             }
         }
-
-        if !enum_reexports_src.is_empty() || !local_enums_src.is_empty() {
-            let mut all = String::new();
-            all.push_str(&enum_reexports_src);
-            if !enum_reexports_src.is_empty() && !local_enums_src.is_empty() {
-                all.push('\n');
-            }
-            all.push_str(&local_enums_src);
-            s.push_str(&indent_block(&all, 8));
+        if generated_any {
             s.push('\n');
         }
 
-        if pull_exists && !pull_has_ty {
-            s.push_str("        pub type Pull = u32;\n\n");
-        }
+        // Pin typestate:
+        //   Pin<Unconfigured> --configure()--> PinConfigurator --apply()--> PinConfigured::Input(PinInput) | Output(PinOutput)
+        // PinInput: no set_high/set_low (input pin).
+        // PinOutput: set_high/set_low available.
 
-        // Pin + builder (typestate: InputMode/OutputMode).
-        s.push_str("        pub struct Pin<'a, Mode> {\n");
-        s.push_str(&format!("            port: &'a {port_ty},\n"));
-        s.push_str("            index: u8,\n");
-        s.push_str("            _mode: PhantomData<Mode>,\n");
-        s.push_str("        }\n\n");
+        let dir_field = self
+            .pin_fields
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case("DIR"));
+        let pull_field = self
+            .pin_fields
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case("PULL"));
+        let drive_field = self
+            .pin_fields
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case("DRIVE"));
 
-        s.push_str("        impl<'a, Mode> Pin<'a, Mode> {\n");
-        s.push_str("            #[inline(always)]\n");
+        let dir_info = dir_field.map(|f| {
+            let (lsb, width) = field_lsb_width(f);
+            let mask: u32 = (1u32 << width) - 1;
+            let out_val = infer_output_value(f).unwrap_or(1);
+            (lsb, mask, out_val)
+        });
+        let pull_info = pull_field.map(|f| {
+            let (lsb, width) = field_lsb_width(f);
+            let mask: u32 = (1u32 << width) - 1;
+            (lsb, mask)
+        });
+        let drive_info = drive_field.map(|f| {
+            let (lsb, width) = field_lsb_width(f);
+            let mask: u32 = (1u32 << width) - 1;
+            (lsb, mask)
+        });
+        let sense_info = self
+            .pin_fields
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case("SENSE"))
+            .map(|f| {
+                let (lsb, width) = field_lsb_width(f);
+                let mask: u32 = (1u32 << width) - 1;
+                (lsb, mask)
+            });
+
         s.push_str(&format!(
-            "            pub fn builder(port: &'a {port_ty}, index: u8) -> PinBuilder<'a, UnknownMode> {{\n"
+            "        pub struct Pin<'a, S: GpioState> {{\n            port: &'a {port_ty},\n            pin: u8,\n            _state: PhantomData<S>,\n        }}\n\n"
         ));
-        s.push_str(&format!(
-            "                let reg = &port.{}[index as usize];\n",
-            self.field_pin_cnf
-        ));
-        s.push_str("                let cnf = reg.read();\n");
-        s.push_str("                PinBuilder { port, index, cnf, _mode: PhantomData }\n");
-        s.push_str("            }\n\n");
-        s.push_str("        }\n\n");
 
-        s.push_str("        impl<'a> Pin<'a, OutputMode> {\n");
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn set_high(&self) {\n");
-        s.push_str(&format!(
-            "                self.port.{}.write(1u32 << (self.index as u32));\n",
-            self.field_outset
-        ));
-        s.push_str("            }\n\n");
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn set_low(&self) {\n");
-        s.push_str(&format!(
-            "                self.port.{}.write(1u32 << (self.index as u32));\n",
-            self.field_outclr
-        ));
-        s.push_str("            }\n");
-        s.push_str("        }\n\n");
-
-        s.push_str("        pub struct PinBuilder<'a, Mode> {\n");
-        s.push_str(&format!("            port: &'a {port_ty},\n"));
-        s.push_str("            index: u8,\n");
-        s.push_str("            cnf: u32,\n");
-        s.push_str("            _mode: PhantomData<Mode>,\n");
-        s.push_str("        }\n\n");
-
-        s.push_str("        impl<'a, Mode> PinBuilder<'a, Mode> {\n");
-        s.push_str(&indent_block(&builder_methods_generic, 12));
-        if !builder_methods_generic.is_empty() && !builder_methods_generic.ends_with('\n') {
-            s.push('\n');
-        }
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn build(self) -> Pin<'a, Mode> {\n");
-        s.push_str(&format!(
-            "                let reg = &self.port.{}[self.index as usize];\n",
-            self.field_pin_cnf
-        ));
-        s.push_str("                reg.write(self.cnf);\n");
-        s.push_str(
-            "                Pin { port: self.port, index: self.index, _mode: PhantomData }\n",
-        );
-        s.push_str("            }\n");
-        s.push_str("        }\n");
-
-        if !builder_methods_input_only.is_empty() {
-            s.push_str("\n");
-            s.push_str("        impl<'a> PinBuilder<'a, UnknownMode> {\n");
-            s.push_str(&indent_block(&builder_methods_input_only, 12));
-            s.push_str("        }\n\n");
-
-            s.push_str("        impl<'a> PinBuilder<'a, InputMode> {\n");
-            s.push_str(&indent_block(&builder_methods_input_only, 12));
-            s.push_str("        }\n");
-        }
-
-        s.push_str("\n");
-        s.push_str(&format!(
-            "        pub struct GpioPin<S: GpioState> {{\n            port: *const {port_ty},\n            pin: u8,\n            _state: PhantomData<S>,\n        }}\n\n"
-        ));
         s.push_str("        #[inline(always)]\n");
-        s.push_str("        pub unsafe fn pin(pin: u8) -> GpioPin<Unconfigured> {\n");
+        s.push_str("        pub unsafe fn pin(pin: u8) -> Pin<'_, Unconfigured> {\n");
         s.push_str(&format!(
-            "            GpioPin {{ port: pac::{}::PTR as *const {port_ty}, pin, _state: PhantomData }}\n",
+            "            Pin {{ port: &*pac::{}::PTR, pin, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("        }\n\n");
-        s.push_str("        impl GpioPin<Unconfigured> {\n");
+
+        // Deferred-commit PinConfigurator: reads current CNF once, mutates in memory,
+        // writes to hardware only on apply().
+        s.push_str("        pub struct PinConfigurator<'a> {\n");
+        s.push_str("            port: &'a ");
+        s.push_str(&port_ty);
+        s.push_str(",\n");
+        s.push_str("            pin: u8,\n");
+        s.push_str("            cnf: u32,\n");
+        s.push_str("            output: bool,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        impl<'a> Pin<'a, Unconfigured> {\n");
         s.push_str("            #[inline(always)]\n");
-        if pull_exists {
-            s.push_str(
-                "            pub fn into_input(self, pull: Pull) -> GpioPin<Configured> {\n",
-            );
-        } else {
-            s.push_str(
-                "            pub fn into_input(self, _pull: u32) -> GpioPin<Configured> {\n",
-            );
+        s.push_str("            pub fn configure(self) -> PinConfigurator<'a> {\n");
+        s.push_str(&format!(
+            "                let cnf = self.port.{}[self.pin as usize].read();\n",
+            self.field_pin_cnf
+        ));
+        s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: false }\n");
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        impl<'a> PinConfigurator<'a> {\n");
+
+        // dir()
+        if let Some((lsb, mask, out_val)) = dir_info {
+            s.push_str(&format!(
+                "            #[inline(always)]\n            pub fn dir(self, v: Dir) -> Self {{\n                let output = (v as u32) == {out_val}u32;\n                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n                PinConfigurator {{ port: self.port, pin: self.pin, cnf, output }}\n            }}\n\n"
+            ));
         }
-        s.push_str("                let port = unsafe { &*self.port };\n");
-        s.push_str(
-            "                let b = Pin::<UnknownMode>::builder(port, self.pin).into_input();\n",
-        );
-        if pull_exists {
-            s.push_str("                let _ = b.pull(pull).build();\n");
-        } else {
-            s.push_str("                let _ = b.build();\n");
+
+        // pull()
+        if let Some((lsb, mask)) = pull_info {
+            s.push_str(&format!(
+                "            #[inline(always)]\n            pub fn pull(self, v: Pull) -> Self {{\n                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n                PinConfigurator {{ port: self.port, pin: self.pin, cnf, output: self.output }}\n            }}\n\n"
+            ));
         }
-        s.push_str(
-            "                GpioPin { port: self.port, pin: self.pin, _state: PhantomData }\n",
-        );
+
+        // drive()
+        if let Some((lsb, mask)) = drive_info {
+            s.push_str(&format!(
+                "            #[inline(always)]\n            pub fn drive(self, v: Drive) -> Self {{\n                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n                PinConfigurator {{ port: self.port, pin: self.pin, cnf, output: self.output }}\n            }}\n\n"
+            ));
+        }
+
+        // sense()
+        if let Some((lsb, mask)) = sense_info {
+            s.push_str(&format!(
+                "            #[inline(always)]\n            pub fn sense(self, v: Sense) -> Self {{\n                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n                PinConfigurator {{ port: self.port, pin: self.pin, cnf, output: self.output }}\n            }}\n\n"
+            ));
+        }
+
+        // apply(): writes CNF, returns PinConfigured (Input or Output branch).
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn apply(self) -> PinConfigured<'a> {\n");
+        s.push_str(&format!(
+            "                self.port.{}[self.pin as usize].write(self.cnf);\n",
+            self.field_pin_cnf
+        ));
+        s.push_str("                if self.output {\n");
+        s.push_str("                    PinConfigured::Output(PinOutput { port: self.port, pin: self.pin })\n");
+        s.push_str("                } else {\n");
+        s.push_str("                    PinConfigured::Input(PinInput { port: self.port, pin: self.pin })\n");
+        s.push_str("                }\n");
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        // PinConfigured enum: Input / Output branches.
+        s.push_str("        pub enum PinConfigured<'a> {\n");
+        s.push_str("            Input(PinInput<'a>),\n");
+        s.push_str("            Output(PinOutput<'a>),\n");
+        s.push_str("        }\n\n");
+
+        // PinInput: input pin, no set_high/set_low.
+        s.push_str("        pub struct PinInput<'a> {\n");
+        s.push_str("            port: &'a ");
+        s.push_str(&port_ty);
+        s.push_str(",\n");
+        s.push_str("            pin: u8,\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl<'a> PinInput<'a> {\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn reconfigure(self) -> PinConfigurator<'a> {\n");
+        s.push_str(&format!(
+            "                let cnf = self.port.{}[self.pin as usize].read();\n",
+            self.field_pin_cnf
+        ));
+        s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: false }\n");
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        // PinOutput: output pin, has set_high/set_low.
+        s.push_str("        pub struct PinOutput<'a> {\n");
+        s.push_str("            port: &'a ");
+        s.push_str(&port_ty);
+        s.push_str(",\n");
+        s.push_str("            pin: u8,\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl<'a> PinOutput<'a> {\n");
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn reconfigure(self) -> PinConfigurator<'a> {\n");
+        s.push_str(&format!(
+            "                let cnf = self.port.{}[self.pin as usize].read();\n",
+            self.field_pin_cnf
+        ));
+        s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: true }\n");
         s.push_str("            }\n\n");
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn into_output(self, level: Level) -> GpioPin<Configured> {\n");
-        s.push_str("                let port = unsafe { &*self.port };\n");
-        s.push_str("                let _ = Pin::<UnknownMode>::builder(port, self.pin).into_output().build();\n");
-        s.push_str("                match level {\n");
-        s.push_str(&format!(
-            "                    Level::Low => port.{}.write(1u32 << (self.pin as u32)),\n",
-            self.field_outclr
-        ));
-        s.push_str(&format!(
-            "                    Level::High => port.{}.write(1u32 << (self.pin as u32)),\n",
-            self.field_outset
-        ));
-        s.push_str("                }\n");
-        s.push_str(
-            "                GpioPin { port: self.port, pin: self.pin, _state: PhantomData }\n",
-        );
-        s.push_str("            }\n");
-        s.push_str("        }\n\n");
-        s.push_str("        impl GpioPin<Configured> {\n");
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn enable(self) -> GpioPin<Enabled> {\n");
-        s.push_str(
-            "                GpioPin { port: self.port, pin: self.pin, _state: PhantomData }\n",
-        );
-        s.push_str("            }\n");
-        s.push_str("        }\n\n");
-        s.push_str("        impl GpioPin<Enabled> {\n");
-        s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn set_high(&self) {\n");
-        s.push_str("                let port = unsafe { &*self.port };\n");
         s.push_str(&format!(
-            "                port.{}.write(1u32 << (self.pin as u32));\n",
+            "                self.port.{}.write(1u32 << (self.pin as u32));\n",
             self.field_outset
         ));
         s.push_str("            }\n\n");
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn set_low(&self) {\n");
-        s.push_str("                let port = unsafe { &*self.port };\n");
         s.push_str(&format!(
-            "                port.{}.write(1u32 << (self.pin as u32));\n",
+            "                self.port.{}.write(1u32 << (self.pin as u32));\n",
             self.field_outclr
         ));
         s.push_str("            }\n");
@@ -377,146 +349,6 @@ impl GpioPortInfo {
         s.push_str("    }\n");
         Ok(s)
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct InputDisconnectInfo {
-    lsb: u32,
-    mask: u32,
-    disconnect: u32,
-}
-
-fn render_builder_setter(
-    pin_cnf_field: &str,
-    field_name: &str,
-    f: &svd::Field,
-    has_enum: bool,
-    input_disconnect: Option<&InputDisconnectInfo>,
-) -> String {
-    let (lsb, width) = field_lsb_width(f);
-    let mask: u32 = if width >= 32 {
-        u32::MAX
-    } else {
-        ((1u64 << width) - 1) as u32
-    };
-    let ty = if has_enum {
-        sanitize_type_name(field_name)
-    } else {
-        "u32".to_string()
-    };
-    let arg = if has_enum { "v as u32" } else { "v" };
-    let mname = sanitize_field_name(field_name);
-
-    let mut s = String::new();
-
-    // Special handling for DIR: provide typestate transitions into OutputMode/InputMode so that
-    // set_high/set_low are only available after the required configuration.
-    if field_name.eq_ignore_ascii_case("DIR") {
-        let (dir_in, dir_out) = dir_input_output_values(f);
-
-        // Keep the generic setter for backwards compatibility.
-        s.push_str("#[inline(always)]\n");
-        s.push_str(&format!("pub fn {mname}(self, v: {ty}) -> Self {{\n"));
-        let _ = pin_cnf_field; // kept for signature compatibility; writes happen in build()
-        s.push_str("    let cur = self.cnf;\n");
-        s.push_str(&format!(
-            "    let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({arg}) & 0x{mask:X}u32) << {lsb});\n"
-        ));
-        s.push_str("    PinBuilder { cnf: new, ..self }\n");
-        s.push_str("}\n\n");
-
-        // Typestate transitions.
-        s.push_str("#[inline(always)]\n");
-        s.push_str("pub fn into_output(self) -> PinBuilder<'a, OutputMode> {\n");
-        s.push_str("    let cur = self.cnf;\n");
-        if let Some(info) = input_disconnect {
-            s.push_str(&format!(
-                "    let mut new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_out}u32) & 0x{mask:X}u32) << {lsb});\n"
-            ));
-            s.push_str(&format!(
-                "    new = (new & !(0x{in_mask:X}u32 << {in_lsb})) | ((({disconnect}u32) & 0x{in_mask:X}u32) << {in_lsb});\n",
-                in_mask = info.mask,
-                in_lsb = info.lsb,
-                disconnect = info.disconnect
-            ));
-        } else {
-            s.push_str(&format!(
-                "    let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_out}u32) & 0x{mask:X}u32) << {lsb});\n"
-            ));
-        }
-        s.push_str(
-            "    PinBuilder { port: self.port, index: self.index, cnf: new, _mode: PhantomData }\n",
-        );
-        s.push_str("}\n\n");
-
-        s.push_str("#[inline(always)]\n");
-        s.push_str("pub fn into_input(self) -> PinBuilder<'a, InputMode> {\n");
-        s.push_str("    let cur = self.cnf;\n");
-        s.push_str(&format!(
-            "    let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({dir_in}u32) & 0x{mask:X}u32) << {lsb});\n"
-        ));
-        s.push_str(
-            "    PinBuilder { port: self.port, index: self.index, cnf: new, _mode: PhantomData }\n",
-        );
-        s.push_str("}\n\n");
-
-        return s;
-    }
-    s.push_str("#[inline(always)]\n");
-    s.push_str(&format!("pub fn {mname}(self, v: {ty}) -> Self {{\n"));
-    let _ = pin_cnf_field; // kept for signature compatibility; writes happen in build()
-    s.push_str("    let cur = self.cnf;\n");
-    s.push_str(&format!(
-        "    let new = (cur & !(0x{mask:X}u32 << {lsb})) | ((({arg}) & 0x{mask:X}u32) << {lsb});\n"
-    ));
-    s.push_str("    PinBuilder { cnf: new, ..self }\n");
-    s.push_str("}\n\n");
-    s
-}
-
-fn dir_input_output_values(f: &svd::Field) -> (u32, u32) {
-    // Try to infer from enumeratedValues; fall back to (0=input, 1=output).
-    let mut input: Option<u32> = None;
-    let mut output: Option<u32> = None;
-
-    if let Some(evs) = f.enumerated_values.first() {
-        for v in &evs.enumerated_value {
-            let Some(val) = (match &v.spec {
-                svd::EnumeratedValueSpec::Value { value } => parse_enum_u64(value),
-                svd::EnumeratedValueSpec::IsDefault { .. } => None,
-            }) else {
-                continue;
-            };
-            let name = v.name.to_ascii_lowercase();
-            if input.is_none() && name.contains("input") {
-                input = Some(val as u32);
-            }
-            if output.is_none() && name.contains("output") {
-                output = Some(val as u32);
-            }
-        }
-    }
-
-    (input.unwrap_or(0), output.unwrap_or(1))
-}
-
-fn input_disconnect_value(f: &svd::Field) -> u32 {
-    let mut disconnect: Option<u32> = None;
-    if let Some(evs) = f.enumerated_values.first() {
-        for v in &evs.enumerated_value {
-            let Some(val) = (match &v.spec {
-                svd::EnumeratedValueSpec::Value { value } => parse_enum_u64(value),
-                svd::EnumeratedValueSpec::IsDefault { .. } => None,
-            }) else {
-                continue;
-            };
-            let name = v.name.to_ascii_lowercase();
-            if disconnect.is_none() && name.contains("disconnect") {
-                disconnect = Some(val as u32);
-            }
-        }
-    }
-    disconnect.unwrap_or(1)
 }
 
 fn render_field_enum(field_name: &str, f: &svd::Field) -> Option<String> {
@@ -546,6 +378,26 @@ fn render_field_enum(field_name: &str, f: &svd::Field) -> Option<String> {
     }
     s.push_str("}\n");
     Some(s)
+}
+
+fn infer_output_value(f: &svd::Field) -> Option<u32> {
+    let evs = f.enumerated_values.first()?;
+    let mut output: Option<u32> = None;
+    for v in &evs.enumerated_value {
+        let Some(val) = (match &v.spec {
+            svd::EnumeratedValueSpec::Value { value } => parse_enum_u64(value),
+            svd::EnumeratedValueSpec::IsDefault { .. } => None,
+        }) else {
+            continue;
+        };
+        let name = v.name.to_ascii_lowercase();
+        if output.is_none()
+            && (name.contains("output") || name.contains("output_1") || name.ends_with('1'))
+        {
+            output = Some(val as u32);
+        }
+    }
+    output
 }
 
 fn collect_gpio_ports(device: &svd::Device) -> Vec<GpioPortInfo> {
