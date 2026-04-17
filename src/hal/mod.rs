@@ -6,6 +6,7 @@ use crate::{Result, svd};
 use std::path::Path;
 
 pub mod async_rt;
+pub mod power;
 
 /// A single generated file (same shape as `pac::GeneratedFile`).
 #[derive(Debug, Clone)]
@@ -107,7 +108,8 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
     }
 
     let clocks = collect_clocks(device);
-    if !clocks.is_empty() {
+    let has_clocks = !clocks.is_empty();
+    if has_clocks {
         if has_gpio_ports || !timers.is_empty() || has_uarts || !usb_devices.is_empty() {
             out.push('\n');
         }
@@ -115,6 +117,20 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
         out.push_str("    use super::pac;\n\n");
         for c in clocks {
             out.push_str(&c.render()?);
+            out.push('\n');
+        }
+        out.push_str("}\n");
+    }
+
+    let power_devices = power::collect_power_devices(device);
+    if !power_devices.is_empty() {
+        if has_gpio_ports || !timers.is_empty() || has_uarts || !usb_devices.is_empty() || has_clocks {
+            out.push('\n');
+        }
+        out.push_str("pub mod power {\n");
+        out.push_str("    use super::pac;\n\n");
+        for p in power_devices {
+            out.push_str(&p.render()?);
             out.push('\n');
         }
         out.push_str("}\n");
