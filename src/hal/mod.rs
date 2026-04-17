@@ -279,7 +279,7 @@ impl GpioPortInfo {
                 ));
             } else {
                 s.push_str(&format!(
-                    "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                    "                let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
             s.push_str(
@@ -298,7 +298,7 @@ impl GpioPortInfo {
                 ));
             } else {
                 s.push_str(&format!(
-                    "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                    "                let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
             s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
@@ -315,7 +315,7 @@ impl GpioPortInfo {
                 ));
             } else {
                 s.push_str(&format!(
-                    "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                    "                let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
             s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
@@ -332,7 +332,7 @@ impl GpioPortInfo {
                 ));
             } else {
                 s.push_str(&format!(
-                    "                let cnf = (self.cnf & !0x{mask:X}u32 << {lsb}) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                    "                let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
             s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
