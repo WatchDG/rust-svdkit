@@ -1,5 +1,5 @@
 use crate::{Result, svd};
-use super::*;
+use super::gpio;
 
 #[derive(Debug, Clone)]
 pub struct PowerInfo {
@@ -34,7 +34,7 @@ impl PowerInfo {
 
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
-        let type_name = sanitize_type_name(self.hal_mod.as_str());
+        let type_name = gpio::sanitize_type_name(self.hal_mod.as_str());
         s.push_str(&format!(
             "        pub type {}Register = pac::{}::RegisterBlock;\n\n",
             type_name, self.periph_mod,
@@ -229,46 +229,46 @@ pub fn collect_power_devices(device: &svd::Device) -> Vec<PowerInfo> {
         if !is_power_peripheral(&p.name) {
             continue;
         }
-        let items = peripheral_register_items(device, p);
+        let items = gpio::peripheral_register_items(device, p);
         if items.is_empty() {
             continue;
         }
 
-        let Some((tasks_constlat_name, _)) = find_register(items, "TASKS_CONSTLAT") else {
+        let Some((tasks_constlat_name, _)) = gpio::find_register(items, "TASKS_CONSTLAT") else {
             continue;
         };
-        let Some((tasks_lowpwr_name, _)) = find_register(items, "TASKS_LOWPWR") else {
-            continue;
-        };
-
-        let Some((events_pofwarn_name, _)) = find_register(items, "EVENTS_POFWARN") else {
-            continue;
-        };
-        let Some((events_sleepenter_name, _)) = find_register(items, "EVENTS_SLEEPENTER") else {
-            continue;
-        };
-        let Some((events_sleepexit_name, _)) = find_register(items, "EVENTS_SLEEPEXIT") else {
-            continue;
-        };
-        let Some((events_usbdetected_name, _)) = find_register(items, "EVENTS_USBDETECTED") else {
-            continue;
-        };
-        let Some((events_usbremoved_name, _)) = find_register(items, "EVENTS_USBREMOVED") else {
-            continue;
-        };
-        let Some((events_usbpwrrdy_name, _)) = find_register(items, "EVENTS_USBPWRRDY") else {
+        let Some((tasks_lowpwr_name, _)) = gpio::find_register(items, "TASKS_LOWPWR") else {
             continue;
         };
 
-        let Some((intenset_name, _)) = find_register(items, "INTENSET") else {
+        let Some((events_pofwarn_name, _)) = gpio::find_register(items, "EVENTS_POFWARN") else {
             continue;
         };
-        let Some((intenclr_name, _)) = find_register(items, "INTENCLR") else {
+        let Some((events_sleepenter_name, _)) = gpio::find_register(items, "EVENTS_SLEEPENTER") else {
+            continue;
+        };
+        let Some((events_sleepexit_name, _)) = gpio::find_register(items, "EVENTS_SLEEPEXIT") else {
+            continue;
+        };
+        let Some((events_usbdetected_name, _)) = gpio::find_register(items, "EVENTS_USBDETECTED") else {
+            continue;
+        };
+        let Some((events_usbremoved_name, _)) = gpio::find_register(items, "EVENTS_USBREMOVED") else {
+            continue;
+        };
+        let Some((events_usbpwrrdy_name, _)) = gpio::find_register(items, "EVENTS_USBPWRRDY") else {
+            continue;
+        };
+
+        let Some((intenset_name, _)) = gpio::find_register(items, "INTENSET") else {
+            continue;
+        };
+        let Some((intenclr_name, _)) = gpio::find_register(items, "INTENCLR") else {
             continue;
         };
 
         let Some((inten_pofwarn_name, inten_pofwarn_reg)) =
-            find_register_prefer_exact(items, "POFWARN")
+            gpio::find_register_prefer_exact(items, "POFWARN")
         else {
             continue;
         };
@@ -305,28 +305,28 @@ pub fn collect_power_devices(device: &svd::Device) -> Vec<PowerInfo> {
 
         out.push(PowerInfo {
             periph_name: p.name.clone(),
-            periph_mod: sanitize_module_name(&p.name),
-            hal_mod: sanitize_field_name(&p.name),
+            periph_mod: gpio::sanitize_module_name(&p.name),
+            hal_mod: gpio::sanitize_field_name(&p.name),
 
-            field_tasks_constlat: sanitize_field_name(&tasks_constlat_name),
-            field_tasks_lowpwr: sanitize_field_name(&tasks_lowpwr_name),
+            field_tasks_constlat: gpio::sanitize_field_name(&tasks_constlat_name),
+            field_tasks_lowpwr: gpio::sanitize_field_name(&tasks_lowpwr_name),
 
-            field_events_pofwarn: sanitize_field_name(&events_pofwarn_name),
-            field_events_sleepenter: sanitize_field_name(&events_sleepenter_name),
-            field_events_sleepexit: sanitize_field_name(&events_sleepexit_name),
-            field_events_usbdetected: sanitize_field_name(&events_usbdetected_name),
-            field_events_usbremoved: sanitize_field_name(&events_usbremoved_name),
-            field_events_usbpwrrdy: sanitize_field_name(&events_usbpwrrdy_name),
+            field_events_pofwarn: gpio::sanitize_field_name(&events_pofwarn_name),
+            field_events_sleepenter: gpio::sanitize_field_name(&events_sleepenter_name),
+            field_events_sleepexit: gpio::sanitize_field_name(&events_sleepexit_name),
+            field_events_usbdetected: gpio::sanitize_field_name(&events_usbdetected_name),
+            field_events_usbremoved: gpio::sanitize_field_name(&events_usbremoved_name),
+            field_events_usbpwrrdy: gpio::sanitize_field_name(&events_usbpwrrdy_name),
 
-            field_intenset: sanitize_field_name(&intenset_name),
-            field_intenclr: sanitize_field_name(&intenclr_name),
+            field_intenset: gpio::sanitize_field_name(&intenset_name),
+            field_intenclr: gpio::sanitize_field_name(&intenclr_name),
 
-            field_inten_pofwarn: sanitize_field_name(&inten_pofwarn_name),
-            field_inten_sleepenter: sanitize_field_name(&inten_sleepenter_name),
-            field_inten_sleepexit: sanitize_field_name(&inten_sleepexit_name),
-            field_inten_usbdetected: sanitize_field_name(&inten_usbdetected_name),
-            field_inten_usbremoved: sanitize_field_name(&inten_usbremoved_name),
-            field_inten_usbpwrrdy: sanitize_field_name(&inten_usbpwrrdy_name),
+            field_inten_pofwarn: gpio::sanitize_field_name(&inten_pofwarn_name),
+            field_inten_sleepenter: gpio::sanitize_field_name(&inten_sleepenter_name),
+            field_inten_sleepexit: gpio::sanitize_field_name(&inten_sleepexit_name),
+            field_inten_usbdetected: gpio::sanitize_field_name(&inten_usbdetected_name),
+            field_inten_usbremoved: gpio::sanitize_field_name(&inten_usbremoved_name),
+            field_inten_usbpwrrdy: gpio::sanitize_field_name(&inten_usbpwrrdy_name),
         });
     }
     out
