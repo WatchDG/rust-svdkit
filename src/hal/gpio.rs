@@ -7,9 +7,11 @@ pub struct GpioPortInfo {
     hal_mod: String,
     field_outset: String,
     field_outclr: String,
+    field_out: String,
     field_pin_cnf: String,
     pin_cnf_reg_path: String,
     pin_fields: Vec<svd::Field>,
+    level_enum_name: Option<String>,
 }
 
 impl GpioPortInfo {
@@ -276,20 +278,54 @@ impl GpioPortInfo {
         ));
         s.push_str("                PinConfigurator { port: self.port, pin: self.pin, cnf, output: true }\n");
         s.push_str("            }\n\n");
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn set_high(&self) {\n");
-        s.push_str(&format!(
-            "                self.port.{}.write(1u32 << (self.pin as u32));\n",
-            self.field_outset
-        ));
-        s.push_str("            }\n\n");
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn set_low(&self) {\n");
-        s.push_str(&format!(
-            "                self.port.{}.write(1u32 << (self.pin as u32));\n",
-            self.field_outclr
-        ));
-        s.push_str("            }\n");
+
+        if let Some(ref level_enum) = self.level_enum_name {
+            s.push_str("            #[inline(always)]\n");
+            s.push_str(&format!("            pub fn set_level(&self, level: super::super::pac::{}::{level_enum}) {{\n", self.periph_mod));
+            s.push_str(&format!(
+                "                let mask = 1u32 << (self.pin as u32);\n"
+            ));
+            s.push_str(&format!(
+                "                let new_value = (self.port.{}.read() & !mask) | ((level as u32) << (self.pin as u32));\n",
+                self.field_out
+            ));
+            s.push_str(&format!(
+                "                self.port.{}.write(new_value);\n",
+                self.field_out
+            ));
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn set_high(&self) {\n");
+            s.push_str(&format!(
+                "                self.set_level(super::super::pac::{}::{level_enum}::High);\n",
+                self.periph_mod
+            ));
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn set_low(&self) {\n");
+            s.push_str(&format!(
+                "                self.set_level(super::super::pac::{}::{level_enum}::Low);\n",
+                self.periph_mod
+            ));
+            s.push_str("            }\n");
+        } else {
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn set_high(&self) {\n");
+            s.push_str(&format!(
+                "                self.port.{}.write(1u32 << (self.pin as u32));\n",
+                self.field_outset
+            ));
+            s.push_str("            }\n\n");
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn set_low(&self) {\n");
+            s.push_str(&format!(
+                "                self.port.{}.write(1u32 << (self.pin as u32));\n",
+                self.field_outclr
+            ));
+            s.push_str("            }\n");
+        }
         s.push_str("        }\n");
 
         s.push_str("    }\n");
@@ -317,6 +353,11 @@ pub fn collect_gpio_ports(device: &svd::Device) -> Vec<GpioPortInfo> {
         let Some((outclr_name, _)) = find_register(items, "OUTCLR") else {
             continue;
         };
+        let Some((out_name, out_reg)) = find_register(items, "OUT") else {
+            continue;
+        };
+
+        let level_enum_name = find_level_enum_for_out_reg(p, out_reg);
 
         out.push(GpioPortInfo {
             periph_name: p.name.clone(),
@@ -324,12 +365,39 @@ pub fn collect_gpio_ports(device: &svd::Device) -> Vec<GpioPortInfo> {
             hal_mod: sanitize_field_name(&p.name),
             field_outset: sanitize_field_name(&outset_name),
             field_outclr: sanitize_field_name(&outclr_name),
+            field_out: sanitize_field_name(&out_name),
             field_pin_cnf: sanitize_field_name(&pin_cnf_name),
             pin_cnf_reg_path: pin_cnf_reg.name.clone(),
             pin_fields: pin_cnf_reg.field.clone(),
+            level_enum_name,
         });
     }
     out
+}
+
+fn find_level_enum_for_out_reg(p: &svd::Peripheral, out_reg: &svd::Register) -> Option<String> {
+    let pin0_field = out_reg.field.iter().find(|f| {
+        let name_upper = f.name.to_ascii_uppercase();
+        name_upper == "PIN0" || name_upper.ends_with("_PIN0")
+    })?;
+    
+    let evs = pin0_field.enumerated_values.first()?;
+    if evs.enumerated_value.is_empty() {
+        return None;
+    }
+    
+    let has_low = evs.enumerated_value.iter().any(|v| {
+        v.name.to_ascii_lowercase() == "low"
+    });
+    let has_high = evs.enumerated_value.iter().any(|v| {
+        v.name.to_ascii_lowercase() == "high"
+    });
+    
+    if has_low && has_high {
+        Some(pac_enum_type_name_for_field(&p.name, &out_reg.name, pin0_field)?)
+    } else {
+        None
+    }
 }
 
 fn is_gpio_like_port(name: &str) -> bool {
