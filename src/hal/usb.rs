@@ -364,7 +364,7 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep0 = &*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<pac::EpinS>());\n");
+        s.push_str("                    let ep0 = &*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<pac::Epin>());\n");
         s.push_str("                    ep0.ptr.write(ptr as u32);\n");
         s.push_str("                    ep0.maxcnt.write(maxcnt as u32);\n");
         s.push_str("                }\n");
@@ -376,7 +376,7 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep0 = &*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<pac::EpoutS>());\n");
+        s.push_str("                    let ep0 = &*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<pac::Epout>());\n");
         s.push_str("                    ep0.ptr.write(ptr as u32);\n");
         s.push_str("                    ep0.maxcnt.write(maxcnt as u32);\n");
         s.push_str("                }\n");
@@ -384,12 +384,12 @@ impl UsbInfo {
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
-        s.push_str("                unsafe { (&*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<pac::EpoutS>())).amount.read() }\n");
+        s.push_str("                unsafe { (&*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<pac::Epout>())).amount.read() }\n");
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
-        s.push_str("                unsafe { (&*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<pac::EpinS>())).amount.read() }\n");
+        s.push_str("                unsafe { (&*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<pac::Epin>())).amount.read() }\n");
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");

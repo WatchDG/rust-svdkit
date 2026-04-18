@@ -636,6 +636,7 @@ pub fn parse_enum_u64(s: &str) -> Option<u64> {
 }
 
 pub fn sanitize_type_name(s: &str) -> String {
+    let s = s.replace("[%s]", "").replace("%s", "");
     let mut out = String::new();
     let mut upper_next = true;
     for ch in s.chars() {

@@ -1871,6 +1871,8 @@ fn sanitize_module_name(s: &str) -> String {
 
 fn sanitize_type_name(s: &str) -> String {
     // CamelCase from tokens separated by non-alnum.
+    // Remove [%s] and %s patterns used as array index placeholders in SVD.
+    let s = s.replace("[%s]", "").replace("%s", "");
     let mut out = String::new();
     let mut upper_next = true;
     for ch in s.chars() {
