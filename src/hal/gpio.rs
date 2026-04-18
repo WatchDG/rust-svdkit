@@ -380,21 +380,27 @@ fn find_level_enum_for_out_reg(p: &svd::Peripheral, out_reg: &svd::Register) -> 
         let name_upper = f.name.to_ascii_uppercase();
         name_upper == "PIN0" || name_upper.ends_with("_PIN0")
     })?;
-    
+
     let evs = pin0_field.enumerated_values.first()?;
     if evs.enumerated_value.is_empty() {
         return None;
     }
-    
-    let has_low = evs.enumerated_value.iter().any(|v| {
-        v.name.to_ascii_lowercase() == "low"
-    });
-    let has_high = evs.enumerated_value.iter().any(|v| {
-        v.name.to_ascii_lowercase() == "high"
-    });
-    
+
+    let has_low = evs
+        .enumerated_value
+        .iter()
+        .any(|v| v.name.to_ascii_lowercase() == "low");
+    let has_high = evs
+        .enumerated_value
+        .iter()
+        .any(|v| v.name.to_ascii_lowercase() == "high");
+
     if has_low && has_high {
-        Some(pac_enum_type_name_for_field(&p.name, &out_reg.name, pin0_field)?)
+        Some(pac_enum_type_name_for_field(
+            &p.name,
+            &out_reg.name,
+            pin0_field,
+        )?)
     } else {
         None
     }
@@ -434,6 +440,7 @@ fn pac_enum_type_name_for_field(
         return None;
     }
 
+    let field_name_for_enum = extract_enum_base_name(&f.name);
     let base = evs
         .header_enum_name
         .as_deref()
@@ -444,10 +451,35 @@ fn pac_enum_type_name_for_field(
                 "{}_{}_{}",
                 periph_name,
                 reg_path.replace('.', "_"),
-                f.name
+                field_name_for_enum
             ))
         });
     Some(base)
+}
+
+fn extract_enum_base_name(field_name: &str) -> String {
+    let upper = field_name.to_ascii_uppercase();
+
+    for i in (1..upper.len()).rev() {
+        if upper
+            .chars()
+            .nth(i)
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
+            if i > 0
+                && upper
+                    .chars()
+                    .nth(i - 1)
+                    .map(|c| c.is_ascii_alphabetic())
+                    .unwrap_or(false)
+            {
+                return field_name[..i].to_string();
+            }
+        }
+    }
+
+    field_name.to_string()
 }
 
 fn render_field_enum(field_name: &str, f: &svd::Field) -> Option<String> {

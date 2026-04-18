@@ -1,5 +1,5 @@
-use crate::{Result, svd};
 use super::gpio;
+use crate::{Result, svd};
 
 #[derive(Debug, Clone)]
 pub struct ClockInfo {

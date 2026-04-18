@@ -1,5 +1,5 @@
-use crate::{Result, svd};
 use super::gpio;
+use crate::{Result, svd};
 
 #[derive(Debug, Clone)]
 pub struct UsbInfo {
@@ -246,9 +246,7 @@ impl UsbInfo {
             "                let mut epinen = self.usb.{}.read();\n",
             self.field_epinen
         ));
-        s.push_str(
-            "                epinen |= (1u32 << data_ep) | (1u32 << notify_ep);\n",
-        );
+        s.push_str("                epinen |= (1u32 << data_ep) | (1u32 << notify_ep);\n");
         s.push_str(&format!(
             "                self.usb.{}.write(epinen);\n",
             self.field_epinen
@@ -463,7 +461,8 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
         let Some((events_ep0setup_name, _)) = gpio::find_register(items, "EVENTS_EP0SETUP") else {
             continue;
         };
-        let Some((events_ep0datadone_name, _)) = gpio::find_register(items, "EVENTS_EP0DATADONE") else {
+        let Some((events_ep0datadone_name, _)) = gpio::find_register(items, "EVENTS_EP0DATADONE")
+        else {
             continue;
         };
         let Some((events_endepin_name, _)) = gpio::find_register(items, "EVENTS_ENDEPIN") else {

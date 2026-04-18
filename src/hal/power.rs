@@ -1,5 +1,5 @@
-use crate::{Result, svd};
 use super::gpio;
+use crate::{Result, svd};
 
 #[derive(Debug, Clone)]
 pub struct PowerInfo {
@@ -171,8 +171,7 @@ impl PowerInfo {
         s.push_str("            }\n");
         s.push_str("        }\n\n");
 
-        s.push_str(&format!(
-            "        impl<'a> Power<'a, ConstLat> {{\n"));
+        s.push_str(&format!("        impl<'a> Power<'a, ConstLat> {{\n"));
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn to_unconfigured(self) -> Power<'a, Unconfigured> {\n");
         s.push_str(&format!(
@@ -181,8 +180,7 @@ impl PowerInfo {
         s.push_str("            }\n");
         s.push_str("        }\n\n");
 
-        s.push_str(&format!(
-            "        impl<'a> Power<'a, LowPower> {{\n"));
+        s.push_str(&format!("        impl<'a> Power<'a, LowPower> {{\n"));
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn to_unconfigured(self) -> Power<'a, Unconfigured> {\n");
         s.push_str(&format!(
@@ -244,19 +242,24 @@ pub fn collect_power_devices(device: &svd::Device) -> Vec<PowerInfo> {
         let Some((events_pofwarn_name, _)) = gpio::find_register(items, "EVENTS_POFWARN") else {
             continue;
         };
-        let Some((events_sleepenter_name, _)) = gpio::find_register(items, "EVENTS_SLEEPENTER") else {
+        let Some((events_sleepenter_name, _)) = gpio::find_register(items, "EVENTS_SLEEPENTER")
+        else {
             continue;
         };
-        let Some((events_sleepexit_name, _)) = gpio::find_register(items, "EVENTS_SLEEPEXIT") else {
+        let Some((events_sleepexit_name, _)) = gpio::find_register(items, "EVENTS_SLEEPEXIT")
+        else {
             continue;
         };
-        let Some((events_usbdetected_name, _)) = gpio::find_register(items, "EVENTS_USBDETECTED") else {
+        let Some((events_usbdetected_name, _)) = gpio::find_register(items, "EVENTS_USBDETECTED")
+        else {
             continue;
         };
-        let Some((events_usbremoved_name, _)) = gpio::find_register(items, "EVENTS_USBREMOVED") else {
+        let Some((events_usbremoved_name, _)) = gpio::find_register(items, "EVENTS_USBREMOVED")
+        else {
             continue;
         };
-        let Some((events_usbpwrrdy_name, _)) = gpio::find_register(items, "EVENTS_USBPWRRDY") else {
+        let Some((events_usbpwrrdy_name, _)) = gpio::find_register(items, "EVENTS_USBPWRRDY")
+        else {
             continue;
         };
 

@@ -1,5 +1,5 @@
-use crate::{Result, svd};
 use super::gpio;
+use crate::{Result, svd};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -77,7 +77,10 @@ impl UartInfo {
             pac_enum_type_name_for_field(&self.periph_name, "BAUDRATE", &self.baudrate_field);
         if let Some(ty) = &pac_baudrate_ty {
             s.push_str(&indent_block(
-                &format!("pub use super::super::pac::{}::{ty} as {baudrate_alias};\n", self.periph_mod),
+                &format!(
+                    "pub use super::super::pac::{}::{ty} as {baudrate_alias};\n",
+                    self.periph_mod
+                ),
                 8,
             ));
             s.push('\n');
@@ -91,7 +94,10 @@ impl UartInfo {
             let pac_hwfc_ty = pac_enum_type_name_for_field(&self.periph_name, "CONFIG", hwfc_f);
             if let Some(ty) = &pac_hwfc_ty {
                 s.push_str(&indent_block(
-                    &format!("pub use super::super::pac::{}::{ty} as {hwfc_alias};\n", self.periph_mod),
+                    &format!(
+                        "pub use super::super::pac::{}::{ty} as {hwfc_alias};\n",
+                        self.periph_mod
+                    ),
                     8,
                 ));
                 s.push('\n');
@@ -106,7 +112,10 @@ impl UartInfo {
             let pac_parity_ty = pac_enum_type_name_for_field(&self.periph_name, "CONFIG", parity_f);
             if let Some(ty) = &pac_parity_ty {
                 s.push_str(&indent_block(
-                    &format!("pub use super::super::pac::{}::{ty} as {parity_alias};\n", self.periph_mod),
+                    &format!(
+                        "pub use super::super::pac::{}::{ty} as {parity_alias};\n",
+                        self.periph_mod
+                    ),
                     8,
                 ));
                 s.push('\n');

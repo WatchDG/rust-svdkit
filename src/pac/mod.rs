@@ -12,6 +12,8 @@ use crate::{Result, svd};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+mod helpers;
+
 /// A single generated file.
 #[derive(Debug, Clone)]
 pub struct GeneratedFile {
@@ -1839,7 +1841,7 @@ fn sanitize_field_name(s: &str) -> String {
     }
     if out.is_empty() {
         "_field".to_string()
-    } else if is_rust_keyword(&out) {
+    } else if helpers::is_rust_keyword(&out) {
         format!("{out}_")
     } else {
         out
@@ -1860,7 +1862,7 @@ fn sanitize_module_name(s: &str) -> String {
     }
     if out.is_empty() {
         "PERIPH".to_string()
-    } else if is_rust_keyword(&out.to_ascii_lowercase()) {
+    } else if helpers::is_rust_keyword(&out.to_ascii_lowercase()) {
         format!("{out}_")
     } else {
         out
@@ -1888,54 +1890,11 @@ fn sanitize_type_name(s: &str) -> String {
     }
     if out.is_empty() {
         "Type".to_string()
-    } else if is_rust_keyword(&out.to_ascii_lowercase()) {
+    } else if helpers::is_rust_keyword(&out.to_ascii_lowercase()) {
         format!("{out}_")
     } else {
         out
     }
-}
-
-fn is_rust_keyword(s: &str) -> bool {
-    matches!(
-        s,
-        "as" | "break"
-            | "const"
-            | "continue"
-            | "crate"
-            | "else"
-            | "enum"
-            | "extern"
-            | "false"
-            | "fn"
-            | "for"
-            | "if"
-            | "impl"
-            | "in"
-            | "let"
-            | "loop"
-            | "match"
-            | "mod"
-            | "move"
-            | "mut"
-            | "pub"
-            | "ref"
-            | "return"
-            | "self"
-            | "Self"
-            | "static"
-            | "struct"
-            | "super"
-            | "trait"
-            | "true"
-            | "type"
-            | "unsafe"
-            | "use"
-            | "where"
-            | "while"
-            | "async"
-            | "await"
-            | "dyn"
-    )
 }
 
 fn doc_escape(s: &str) -> String {
@@ -2188,7 +2147,7 @@ fn register_wrapper_type(
                     out.writeln("#[inline(always)]")?;
                     out.writeln(&format!(
                         "pub fn {method_base}(&self) -> Option<field_enums::{enum_ty}> {{ field_enums::{enum_ty}::from_bits(self.{method_base}_raw() as {repr}) }}",
-                        repr = repr_for_bits(width)
+                        repr = helpers::repr_for_bits(width)
                     ))?;
                 }
             }
@@ -2412,6 +2371,8 @@ fn emit_enum_for_field(
     reg_path: &str,
 ) -> Result<()> {
     // Base enum name: prefer headerEnumName/name; otherwise derive from path.
+    // For fields like PIN0, PIN1, PIN2, extract common base (PIN) to enable deduplication.
+    let field_name_for_enum = helpers::extract_enum_base_name(&f.name);
     let base = evs
         .header_enum_name
         .as_deref()
@@ -2422,18 +2383,18 @@ fn emit_enum_for_field(
                 "{}_{}_{}",
                 p.name,
                 reg_path.replace('.', "_"),
-                f.name
+                field_name_for_enum
             ))
         });
 
-    let bit_width = field_bit_width(f);
-    let repr = repr_for_bits(bit_width);
+    let bit_width = helpers::field_bit_width(f);
+    let repr = helpers::repr_for_bits(bit_width);
 
     let mut variants: Vec<(String, Option<u64>, Option<String>)> = Vec::new();
     for ev in &evs.enumerated_value {
-        let vname = sanitize_variant_name(&ev.name);
+        let vname = helpers::sanitize_variant_name(&ev.name);
         let val = match &ev.spec {
-            svd::EnumeratedValueSpec::Value { value } => parse_enum_u64(value),
+            svd::EnumeratedValueSpec::Value { value } => helpers::parse_enum_u64(value),
             svd::EnumeratedValueSpec::IsDefault { .. } => None,
         };
         variants.push((vname, val, ev.description.clone()));
@@ -2568,103 +2529,6 @@ fn emit_enum_for_field(
 
     Ok(())
 }
-
-fn field_bit_width(f: &svd::Field) -> u32 {
-    match f.bit_range {
-        svd::BitRange::BitRangeString { msb, lsb } => msb.saturating_sub(lsb) + 1,
-        svd::BitRange::LsbMsb { lsb, msb } => msb.saturating_sub(lsb) + 1,
-        svd::BitRange::BitOffsetWidth { bit_width, .. } => bit_width.unwrap_or(1),
-    }
-}
-
-fn repr_for_bits(bits: u32) -> &'static str {
-    match bits {
-        0..=8 => "u8",
-        9..=16 => "u16",
-        17..=32 => "u32",
-        _ => "u64",
-    }
-}
-
-fn parse_enum_u64(s: &str) -> Option<u64> {
-    let s = s.trim();
-    let s = s.strip_prefix('+').unwrap_or(s);
-    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        let digits = hex.trim();
-        if digits.is_empty() || digits.contains('x') || digits.contains('X') {
-            return None;
-        }
-        u64::from_str_radix(digits, 16).ok()
-    } else if let Some(bin) = s.strip_prefix("0b") {
-        let digits = bin.trim();
-        if digits.is_empty() || digits.contains('x') || digits.contains('X') {
-            return None;
-        }
-        u64::from_str_radix(digits, 2).ok()
-    } else if let Some(bin) = s.strip_prefix('#') {
-        // CMSIS-SVD allows binary via '#1010' (and may contain x/X wildcards).
-        let digits = bin.trim();
-        if digits.is_empty() || digits.contains('x') || digits.contains('X') {
-            return None;
-        }
-        u64::from_str_radix(digits, 2).ok()
-    } else if s.chars().all(|c| c.is_ascii_digit()) {
-        s.parse::<u64>().ok()
-    } else {
-        None
-    }
-}
-
-fn sanitize_variant_name(s: &str) -> String {
-    // CamelCase variant from tokens.
-    let mut out = String::new();
-    let mut upper_next = true;
-    for ch in s.chars() {
-        if ch.is_ascii_alphanumeric() {
-            if out.is_empty() && ch.is_ascii_digit() {
-                out.push('_');
-            }
-            if upper_next {
-                out.push(ch.to_ascii_uppercase());
-                upper_next = false;
-            } else {
-                out.push(ch.to_ascii_lowercase());
-            }
-        } else {
-            upper_next = true;
-        }
-    }
-    if out.is_empty() {
-        "Value".to_string()
-    } else if is_rust_keyword(&out.to_ascii_lowercase()) {
-        format!("{out}_")
-    } else {
-        out
-    }
-}
-
-// --------------------------- runtime (startup + linker) ---------------------------
-
-fn sanitize_irq_handler_name(s: &str) -> String {
-    // Сохраняем исходный регистр: часто ожидаются имена вроде `TIMER0`, `GPIOTE`, и т.п.
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        let good = ch.is_ascii_alphanumeric() || ch == '_';
-        let ch = if good { ch } else { '_' };
-        if i == 0 && ch.is_ascii_digit() {
-            out.push('_');
-        }
-        out.push(ch);
-    }
-    if out.is_empty() {
-        "IRQ".to_string()
-    } else if is_rust_keyword(&out.to_ascii_lowercase()) {
-        format!("{out}_")
-    } else {
-        out
-    }
-}
-
 fn collect_device_interrupts(device: &svd::Device) -> (u32, Vec<(u32, String, Option<String>)>) {
     // Возвращает (num_irqs, список (irqn, name, desc)).
     //
@@ -2679,7 +2543,7 @@ fn collect_device_interrupts(device: &svd::Device) -> (u32, Vec<(u32, String, Op
             let n = irq.value as u32;
             by_num.entry(n).or_insert_with(|| {
                 (
-                    sanitize_irq_handler_name(&irq.name),
+                    helpers::sanitize_irq_handler_name(&irq.name),
                     irq.description.clone(),
                 )
             });
