@@ -2598,6 +2598,14 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
+    out.writeln("#[inline(always)]")?;
+    out.writeln("pub unsafe fn nop() {")?;
+    out.indent();
+    out.writeln("#[cfg(target_arch = \"arm\")]")?;
+    out.writeln("core::arch::asm!(\"nop\", options(nomem, nostack, preserves_flags));")?;
+    out.dedent();
+    out.writeln("}")?;
+    out.writeln("")?;
 
     out.writeln("#[repr(C)]")?;
     out.writeln("pub union Vector {")?;
