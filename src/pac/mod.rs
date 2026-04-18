@@ -2652,7 +2652,7 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     //
     // Note: we intentionally use `fn()` (not `fn() -> !`) so user IRQ handlers can
     // naturally be written as `unsafe extern \"C\" fn NAME() { .. }`.
-    out.writeln("#[no_mangle]")?;
+    out.writeln("#[unsafe(no_mangle)]")?;
     out.writeln("pub unsafe extern \"C\" fn DefaultHandler() {")?;
     out.indent();
     out.writeln("loop {")?;
@@ -2665,7 +2665,7 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.writeln("")?;
 
     // Reset handler: init memory, optionally set VTOR, then call main().
-    out.writeln("#[no_mangle]")?;
+    out.writeln("#[unsafe(no_mangle)]")?;
     out.writeln("pub unsafe extern \"C\" fn Reset() {")?;
     out.indent();
     out.writeln("let vtor = 0xE000_ED08usize as *mut u32;")?;
@@ -2697,7 +2697,7 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.writeln("")?;
 
     out.writeln("#[used]")?;
-    out.writeln("#[link_section = \".vector_table.reset_vector\"]")?;
+    out.writeln("#[unsafe(link_section = \".vector_table.reset_vector\")]")?;
     out.writeln("pub static __RESET_VECTOR: [Vector; 1] = [")?;
     out.indent();
     out.writeln("Vector { handler: Reset },")?;
@@ -2706,7 +2706,7 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.writeln("")?;
 
     out.writeln("#[used]")?;
-    out.writeln("#[link_section = \".vector_table.exceptions\"]")?;
+    out.writeln("#[unsafe(link_section = \".vector_table.exceptions\")]")?;
     out.writeln("pub static __EXCEPTIONS: [Vector; 14] = [")?;
     out.indent();
     out.writeln("Vector { handler: NMI },")?;
@@ -2736,7 +2736,7 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     }
 
     out.writeln("#[used]")?;
-    out.writeln("#[link_section = \".vector_table.interrupts\"]")?;
+    out.writeln("#[unsafe(link_section = \".vector_table.interrupts\")]")?;
     out.writeln(&format!(
         "pub static __INTERRUPTS: [Vector; {num}usize] = [",
         num = num_irqs
