@@ -70,7 +70,7 @@ impl TimerInfo {
             pac_enum_type_name_for_field(&self.periph_name, &self.mode_reg_path, &self.mode_field);
         let mode_ty = if let Some(ty) = &pac_mode_ty {
             s.push_str(&indent_block(
-                &format!("pub use pac::field_enums::{ty} as {mode_alias};\n"),
+                &format!("pub use super::super::pac::{}::{ty} as {mode_alias};\n", self.periph_mod),
                 8,
             ));
             s.push('\n');
@@ -102,7 +102,7 @@ impl TimerInfo {
         );
         let bitmode_ty = if let Some(ty) = &pac_bitmode_ty {
             s.push_str(&indent_block(
-                &format!("pub use pac::field_enums::{ty} as {bitmode_alias};\n"),
+                &format!("pub use super::super::pac::{}::{ty} as {bitmode_alias};\n", self.periph_mod),
                 8,
             ));
             s.push('\n');

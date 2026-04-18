@@ -65,8 +65,8 @@ impl GpioPortInfo {
                 pac_enum_type_name_for_field(&self.periph_name, &self.pin_cnf_reg_path, f);
             if let Some(ty) = &pac_enum_ty {
                 s.push_str(&format!(
-                    "        pub use pac::field_enums::{} as {};\n",
-                    ty, alias
+                    "        pub use super::super::pac::{}::{} as {};\n",
+                    self.periph_mod, ty, alias
                 ));
                 generated_any = true;
             } else if let Some(e) = render_field_enum(fname, f) {
