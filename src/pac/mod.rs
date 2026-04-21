@@ -21,6 +21,12 @@ pub struct GeneratedFile {
     pub content: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct GeneratedDir {
+    pub path: String,
+    pub files: Vec<GeneratedFile>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct PacOptions {
     pub emit_field_enums: bool,
@@ -41,6 +47,416 @@ impl PacOptions {
             emit_field_methods: false,
         }
     }
+}
+
+/// Generate PAC output as a directory structure.
+/// Each peripheral gets its own directory with a `mod.rs` file.
+/// The root contains `{device}_pac/mod.rs` with all peripherals as submodules.
+pub fn generate_device_dir(device: &svd::Device) -> Result<GeneratedDir> {
+    generate_device_dir_with_options(device, PacOptions::full())
+}
+
+pub fn generate_device_dir_with_options(
+    device: &svd::Device,
+    options: PacOptions,
+) -> Result<GeneratedDir> {
+    let dir_name = format!("{}_pac", sanitize_file_stem(&device.name));
+    let mut files = Vec::new();
+
+    let mut periphs = device.peripherals.clone();
+    periphs.sort_by(|a, b| {
+        a.base_address
+            .cmp(&b.base_address)
+            .then(a.name.cmp(&b.name))
+    });
+
+    let mut mod_lines = Vec::new();
+    mod_lines.push("#[allow(non_snake_case)]".to_string());
+    mod_lines.push("#[allow(non_camel_case_types)]".to_string());
+    mod_lines.push("#[allow(dead_code)]".to_string());
+    mod_lines.push("#[allow(unused_imports)]".to_string());
+    mod_lines.push("#[allow(unsafe_op_in_unsafe_fn)]".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("use core::cell::UnsafeCell;".to_string());
+    mod_lines.push("use core::marker::PhantomData;".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("pub trait RegValue: Copy {".to_string());
+    mod_lines.push("    const BITS: u32;".to_string());
+    mod_lines.push("    const MASK: u64;".to_string());
+    mod_lines.push("    fn to_u64(self) -> u64;".to_string());
+    mod_lines.push("    fn from_u64(v: u64) -> Self;".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    for (ty, bits, mask) in [
+        ("u8", "8", "0xFFu64"),
+        ("u16", "16", "0xFFFFu64"),
+        ("u32", "32", "0xFFFF_FFFFu64"),
+        ("u64", "64", "0xFFFF_FFFF_FFFF_FFFFu64"),
+    ] {
+        mod_lines.push(format!("impl RegValue for {ty} {{",));
+        mod_lines.push(format!("    const BITS: u32 = {bits};",));
+        mod_lines.push(format!("    const MASK: u64 = {mask};",));
+        mod_lines.push("    #[inline(always)]".to_string());
+        mod_lines.push("    fn to_u64(self) -> u64 { self as u64 }".to_string());
+        mod_lines.push("    #[inline(always)]".to_string());
+        mod_lines.push(format!("    fn from_u64(v: u64) -> Self {{ v as {ty} }}",));
+        mod_lines.push("}".to_string());
+        mod_lines.push("".to_string());
+    }
+
+    for (name, ty) in [
+        ("RO", "pub struct RO<T>(UnsafeCell<T>);"),
+        ("WO", "pub struct WO<T>(UnsafeCell<T>);"),
+        ("RW", "pub struct RW<T>(UnsafeCell<T>);"),
+        ("W1S", "pub struct W1S<T>(UnsafeCell<T>);"),
+        ("W1C", "pub struct W1C<T>(UnsafeCell<T>);"),
+        ("W0S", "pub struct W0S<T>(UnsafeCell<T>);"),
+        ("W0C", "pub struct W0C<T>(UnsafeCell<T>);"),
+        ("WT", "pub struct WT<T>(UnsafeCell<T>);"),
+    ] {
+        mod_lines.push("#[repr(transparent)]".to_string());
+        mod_lines.push(format!("{ty}",));
+        mod_lines.push("".to_string());
+    }
+
+    for name in ["RO", "WO", "RW", "W1S", "W1C", "W0S", "W0C", "WT"] {
+        mod_lines.push(format!("unsafe impl<T> Send for {name}<T> {{}}"));
+        mod_lines.push(format!("unsafe impl<T> Sync for {name}<T> {{}}"));
+    }
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: Copy> RO<T> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
+            .to_string(),
+    );
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: Copy> WO<T> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
+            .to_string(),
+    );
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: Copy> RW<T> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
+            .to_string(),
+    );
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: RegValue> W1S<T> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push("    pub fn set_bits(&self, mask: T) { self.write(mask) }".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: RegValue> W1C<T> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push("    pub fn clear_bits(&self, mask: T) { self.write(mask) }".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: RegValue> W0S<T> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push("    pub fn set_bits(&self, mask: T) {".to_string());
+    mod_lines.push("        let m = mask.to_u64() & T::MASK;".to_string());
+    mod_lines.push("        let v = (!m) & T::MASK;".to_string());
+    mod_lines.push("        self.write(T::from_u64(v));".to_string());
+    mod_lines.push("    }".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: RegValue> W0C<T> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push("    pub fn clear_bits(&self, mask: T) {".to_string());
+    mod_lines.push("        let m = mask.to_u64() & T::MASK;".to_string());
+    mod_lines.push("        let v = (!m) & T::MASK;".to_string());
+    mod_lines.push("        self.write(T::from_u64(v));".to_string());
+    mod_lines.push("    }".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: RegValue> WT<T> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push(
+        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
+            .to_string(),
+    );
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push("    pub fn toggle_bits(&self, mask: T) { self.write(mask) }".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("pub struct Unwritten;".to_string());
+    mod_lines.push("pub struct Written;".to_string());
+    mod_lines.push("pub struct WOOnce<T, S> { base: usize, offset: usize, _state: PhantomData<S>, _t: PhantomData<T> }".to_string());
+    mod_lines.push("pub struct RWOnce<T, S> { base: usize, offset: usize, _state: PhantomData<S>, _t: PhantomData<T> }".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: Copy, S> RWOnce<T, S> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push("    pub unsafe fn read(&self) -> T {".to_string());
+    mod_lines.push("        let p = (self.base + self.offset) as *const RW<T>;".to_string());
+    mod_lines.push("        (*p).read()".to_string());
+    mod_lines.push("    }".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: Copy> WOOnce<T, Unwritten> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push("    pub unsafe fn write(self, v: T) -> WOOnce<T, Written> {".to_string());
+    mod_lines.push("        let p = (self.base + self.offset) as *const WO<T>;".to_string());
+    mod_lines.push("        (*p).write(v);".to_string());
+    mod_lines.push("        WOOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }".to_string());
+    mod_lines.push("    }".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push("impl<T: Copy> RWOnce<T, Unwritten> {".to_string());
+    mod_lines.push("    #[inline(always)]".to_string());
+    mod_lines.push("    pub unsafe fn write(self, v: T) -> RWOnce<T, Written> {".to_string());
+    mod_lines.push("        let p = (self.base + self.offset) as *const RW<T>;".to_string());
+    mod_lines.push("        (*p).write(v);".to_string());
+    mod_lines.push("        RWOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }".to_string());
+    mod_lines.push("    }".to_string());
+    mod_lines.push("}".to_string());
+    mod_lines.push("".to_string());
+
+    mod_lines.push(format!("pub const DEVICE_NAME: &str = {:?};", device.name));
+    mod_lines.push(format!(
+        "pub const DEVICE_DESCRIPTION: &str = {:?};",
+        device.description
+    ));
+    mod_lines.push("".to_string());
+
+    let (num_irqs, irqs) = collect_device_interrupts(device);
+    let prio_bits = device
+        .cpu
+        .as_ref()
+        .map(|c| c.nvic_prio_bits)
+        .unwrap_or(8)
+        .min(8);
+
+    if !irqs.is_empty() {
+        mod_lines.push("#[repr(u16)]".to_string());
+        mod_lines.push("#[derive(Copy, Clone, Debug, PartialEq, Eq)]".to_string());
+        mod_lines.push("pub enum Interrupt {".to_string());
+        for (n, name, _desc) in &irqs {
+            mod_lines.push(format!("    {name} = {n},",));
+        }
+        mod_lines.push("}".to_string());
+        mod_lines.push("".to_string());
+    }
+
+    mod_lines.push(format!("pub const _NUM_IRQS: u32 = {num_irqs}u32;"));
+    mod_lines.push(format!("pub const _PRIO_BITS: u8 = {prio_bits}u8;"));
+    mod_lines.push("".to_string());
+
+    for p in &periphs {
+        let cname = sanitize_const_name(&p.name);
+        mod_lines.push(format!(
+            "pub const {cname}_BASE: usize = 0x{:08X};",
+            p.base_address
+        ));
+    }
+    mod_lines.push("".to_string());
+
+    for p in &periphs {
+        let mod_name = sanitize_module_name(&p.name);
+        mod_lines.push(format!("pub mod {mod_name};"));
+        mod_lines.push(format!("pub use {mod_name}::*;"));
+    }
+    mod_lines.push("".to_string());
+
+    files.push(GeneratedFile {
+        file_name: "mod.rs".to_string(),
+        content: mod_lines.join("\n"),
+    });
+
+    let mut st = GenState::new();
+    let mut type_defs = CodeWriter::new();
+
+    for p in &periphs {
+        let content = generate_peripheral_file(device, p, &mut st, &mut type_defs, options)?;
+        let mod_name = sanitize_module_name(&p.name);
+        files.push(GeneratedFile {
+            file_name: format!("{}/mod.rs", mod_name),
+            content,
+        });
+    }
+
+    Ok(GeneratedDir {
+        path: dir_name,
+        files,
+    })
+}
+
+fn generate_peripheral_file(
+    device: &svd::Device,
+    p: &svd::Peripheral,
+    st: &mut GenState,
+    type_defs: &mut CodeWriter,
+    options: PacOptions,
+) -> Result<String> {
+    let base_const_root = format!("{}_BASE", sanitize_const_name(&p.name));
+    let mut out = CodeWriter::new();
+
+    out.writeln("#[allow(non_snake_case)]")?;
+    out.writeln("#[allow(non_camel_case_types)]")?;
+    out.writeln("#[allow(dead_code)]")?;
+    out.writeln("")?;
+    out.writeln("use super::*;")?;
+    out.writeln(&format!(
+        "pub const BASE: usize = super::{}_BASE;",
+        sanitize_const_name(&p.name)
+    ))?;
+    out.writeln("")?;
+
+    out.writeln("#[repr(C)]")?;
+    out.writeln("pub struct RegisterBlock {")?;
+    out.indent();
+
+    let items = peripheral_register_items(device, p);
+    let ctx = Ctx {
+        device,
+        periph: Some(p),
+        cluster_stack: Vec::new(),
+    };
+
+    emit_register_block_items(st, &mut out, type_defs, &ctx, items, 0, options)?;
+
+    out.dedent();
+    out.writeln("}")?;
+
+    emit_reset_impl_for_struct(
+        &mut out,
+        st,
+        type_defs,
+        &ctx,
+        items,
+        "RegisterBlock",
+        options,
+    )?;
+
+    out.writeln(&format!(
+        "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
+    ))?;
+    out.writeln(&format!(
+        "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
+    ))?;
+
+    if options.emit_field_enums {
+        emit_peripheral_enums(st, device, p, &mut out)?;
+    }
+
+    let mut once_regs = Vec::new();
+    let mut name_counts = BTreeMap::new();
+    collect_once_regs(&ctx, items, 0, "", None, &mut name_counts, &mut once_regs);
+    if !once_regs.is_empty() {
+        let once_ty = "Once";
+        out.writeln("")?;
+        out.writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
+        out.writeln("///")?;
+        out.writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
+        out.writeln(&format!("pub struct {once_ty} {{"))?;
+        out.indent();
+        out.writeln("base: usize,")?;
+        for r in &once_regs {
+            out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
+        }
+        out.dedent();
+        out.writeln("}")?;
+        out.writeln(&format!("impl {once_ty} {{"))?;
+        out.indent();
+        out.writeln("/// Create tokens for this peripheral.")?;
+        out.writeln("///")?;
+        out.writeln("/// # Safety")?;
+        out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
+        out.writeln("pub unsafe fn new() -> Self {")?;
+        out.indent();
+        out.writeln("let base = BASE;")?;
+        out.writeln("Self {")?;
+        out.indent();
+        out.writeln("base,")?;
+        for r in &once_regs {
+            out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
+        }
+        out.dedent();
+        out.writeln("}")?;
+        out.dedent();
+        out.writeln("}")?;
+        out.dedent();
+        out.writeln("}")?;
+    }
+
+    if !type_defs.s.trim().is_empty() {
+        out.s.push('\n');
+        out.s.push_str(&type_defs.s);
+        type_defs.s.clear();
+    }
+
+    Ok(out.s)
 }
 
 /// Generate a single Rust file that represents the whole device.
@@ -73,11 +489,6 @@ pub fn generate_device_rs_with_options(
     let mut type_defs = CodeWriter::new();
     let mut st = GenState::new();
 
-    out.writeln("// AUTO-GENERATED BY svdkit::pac")?;
-    out.writeln("//")?;
-    out.writeln(&format!("// Device: {}", device.name))?;
-    out.writeln(&format!("// Version: {}", device.version))?;
-    out.writeln("//")?;
     out.writeln("#[allow(non_snake_case)]")?;
     out.writeln("#[allow(non_camel_case_types)]")?;
     out.writeln("#[allow(dead_code)]")?;
@@ -85,7 +496,6 @@ pub fn generate_device_rs_with_options(
     out.writeln("#[allow(unsafe_op_in_unsafe_fn)]")?;
     out.writeln("")?;
 
-    // Minimal volatile register wrappers (dependency-free).
     out.writeln("use core::cell::UnsafeCell;")?;
     out.writeln("use core::marker::PhantomData;")?;
     out.writeln("")?;
@@ -414,6 +824,38 @@ pub fn write_device_file(device: &svd::Device, out_dir: &Path) -> Result<std::pa
     Ok(out_path)
 }
 
+pub fn write_device_dir(device: &svd::Device, out_dir: &Path) -> Result<std::path::PathBuf> {
+    let generated = generate_device_dir(device)?;
+    let dir_path = out_dir.join(&generated.path);
+    std::fs::create_dir_all(&dir_path)?;
+    for file in generated.files {
+        let file_path = dir_path.join(&file.file_name);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&file_path, file.content)?;
+    }
+    Ok(dir_path)
+}
+
+pub fn write_device_dir_with_options(
+    device: &svd::Device,
+    out_dir: &Path,
+    options: PacOptions,
+) -> Result<std::path::PathBuf> {
+    let generated = generate_device_dir_with_options(device, options)?;
+    let dir_path = out_dir.join(&generated.path);
+    std::fs::create_dir_all(&dir_path)?;
+    for file in generated.files {
+        let file_path = dir_path.join(&file.file_name);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&file_path, file.content)?;
+    }
+    Ok(dir_path)
+}
+
 /// Convenience helper: parse an SVD file and write a generated device `.rs` file.
 pub fn generate_from_svd_file(svd_path: &Path, out_dir: &Path) -> Result<std::path::PathBuf> {
     let dev = crate::parse_svd_file(svd_path)?;
@@ -442,13 +884,9 @@ fn generate_cortex_m_rs(device: &svd::Device) -> Result<String> {
         .min(8);
 
     let mut out = CodeWriter::new();
-    out.writeln("// AUTO-GENERATED BY svdkit::pac (Cortex-M)")?;
-    out.writeln("//")?;
-    out.writeln(&format!("// Device: {}", device.name))?;
-    out.writeln("//")?;
-    out.writeln("#![allow(non_snake_case)]")?;
-    out.writeln("#![allow(non_camel_case_types)]")?;
-    out.writeln("#![allow(dead_code)]")?;
+    out.writeln("#[allow(non_snake_case)]")?;
+    out.writeln("#[allow(non_camel_case_types)]")?;
+    out.writeln("#[allow(dead_code)]")?;
     out.writeln("")?;
 
     out.writeln("pub mod nvic {")?;
@@ -2571,9 +3009,8 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     let (num_irqs, irqs) = collect_device_interrupts(device);
 
     let mut out = CodeWriter::new();
-    out.writeln("// AUTO-GENERATED BY svdkit::pac (runtime)")?;
-    out.writeln("#![allow(non_snake_case)]")?;
-    out.writeln("#![allow(dead_code)]")?;
+    out.writeln("#[allow(non_snake_case)]")?;
+    out.writeln("#[allow(dead_code)]")?;
     out.writeln("")?;
     out.writeln("use core::ptr;")?;
     out.writeln("")?;

@@ -22,13 +22,25 @@ fn main() -> Result<()> {
             clap::Arg::new("pac")
                 .long("pac")
                 .action(clap::ArgAction::SetTrue)
-                .help("Generate PAC files (default: all)"),
+                .help("Generate PAC as single file"),
+        )
+        .arg(
+            clap::Arg::new("pac_dir")
+                .long("pac_dir")
+                .action(clap::ArgAction::SetTrue)
+                .help("Generate PAC as {device}_pac/ directory with peripheral modules"),
         )
         .arg(
             clap::Arg::new("hal")
                 .long("hal")
                 .action(clap::ArgAction::SetTrue)
-                .help("Generate HAL files"),
+                .help("Generate HAL as single file"),
+        )
+        .arg(
+            clap::Arg::new("hal_dir")
+                .long("hal_dir")
+                .action(clap::ArgAction::SetTrue)
+                .help("Generate HAL as {device}_hal/ directory with module files"),
         )
         .arg(
             clap::Arg::new("rt")
@@ -48,11 +60,15 @@ fn main() -> Result<()> {
     let out_dir: PathBuf = matches.get_one::<String>("out_dir").unwrap().into();
 
     let generate_all = !(matches.get_flag("pac")
+        || matches.get_flag("pac_dir")
         || matches.get_flag("hal")
+        || matches.get_flag("hal_dir")
         || matches.get_flag("rt")
         || matches.get_flag("async-rt"));
     let gen_pac = generate_all || matches.get_flag("pac");
+    let gen_pac_dir = matches.get_flag("pac_dir");
     let gen_hal = generate_all || matches.get_flag("hal");
+    let gen_hal_dir = matches.get_flag("hal_dir");
     let gen_rt = generate_all || matches.get_flag("rt");
     let gen_async_rt = generate_all || matches.get_flag("async-rt");
 
@@ -62,7 +78,13 @@ fn main() -> Result<()> {
 
     std::fs::create_dir_all(&out_dir)?;
 
-    if gen_pac || gen_rt {
+    if gen_pac_dir {
+        let path = pac::write_device_dir(&device, &out_dir)?;
+        println!(
+            "  Generated: {}/",
+            path.file_name().unwrap().to_str().unwrap()
+        );
+    } else if gen_pac || gen_rt {
         if gen_rt {
             let files = pac::write_device_files_with_rt(&device, &out_dir)?;
             for p in &files {
@@ -82,7 +104,13 @@ fn main() -> Result<()> {
         }
     }
 
-    if gen_hal {
+    if gen_hal_dir {
+        let path = svdkit::hal::write_device_hal_dir(&device, &out_dir)?;
+        println!(
+            "  Generated: {}/",
+            path.file_name().unwrap().to_str().unwrap()
+        );
+    } else if gen_hal {
         let path = svdkit::hal::write_device_hal_file(&device, &out_dir)?;
         if let Some(os_name) = path.file_name() {
             if let Some(name) = os_name.to_str() {
