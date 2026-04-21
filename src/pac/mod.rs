@@ -338,12 +338,18 @@ pub fn generate_device_dir_with_options(
     let mut type_defs = CodeWriter::new();
 
     for p in &periphs {
-        let content = generate_peripheral_file(device, p, &mut st, &mut type_defs, options)?;
+        let (mod_content, enums_content) = generate_peripheral_file_with_enums(device, p, &mut st, &mut type_defs, options)?;
         let mod_name = sanitize_module_name(&p.name);
         files.push(GeneratedFile {
             file_name: format!("{}/mod.rs", mod_name),
-            content,
+            content: mod_content,
         });
+        if !enums_content.is_empty() {
+            files.push(GeneratedFile {
+                file_name: format!("{}/enums.rs", mod_name),
+                content: enums_content,
+            });
+        }
     }
 
     Ok(GeneratedDir {
@@ -358,7 +364,7 @@ fn generate_peripheral_file(
     st: &mut GenState,
     type_defs: &mut CodeWriter,
     options: PacOptions,
-) -> Result<String> {
+) -> Result<(String, String)> {
     let base_const_root = format!("{}_BASE", sanitize_const_name(&p.name));
     let mut out = CodeWriter::new();
 
@@ -406,9 +412,11 @@ fn generate_peripheral_file(
         "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
     ))?;
 
+    let mut enums_out = CodeWriter::new();
     if options.emit_field_enums {
-        emit_peripheral_enums(st, device, p, &mut out)?;
+        emit_peripheral_enums(st, device, p, &mut enums_out)?;
     }
+    let has_enums = !enums_out.s.trim().is_empty();
 
     let mut once_regs = Vec::new();
     let mut name_counts = BTreeMap::new();
@@ -456,7 +464,23 @@ fn generate_peripheral_file(
         type_defs.s.clear();
     }
 
-    Ok(out.s)
+    if has_enums {
+        out.writeln("")?;
+        out.writeln("pub mod enums;")?;
+        out.writeln("pub use self::enums::*;")?;
+    }
+
+    Ok((out.s, enums_out.s))
+}
+
+fn generate_peripheral_file_with_enums(
+    device: &svd::Device,
+    p: &svd::Peripheral,
+    st: &mut GenState,
+    type_defs: &mut CodeWriter,
+    options: PacOptions,
+) -> Result<(String, String)> {
+    generate_peripheral_file(device, p, st, type_defs, options)
 }
 
 /// Generate a single Rust file that represents the whole device.
