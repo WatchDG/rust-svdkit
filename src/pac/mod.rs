@@ -338,11 +338,16 @@ pub fn generate_device_dir_with_options(
     let mut type_defs = CodeWriter::new();
 
     for p in &periphs {
-        let (mod_content, enums_content) = generate_peripheral_file_with_enums(device, p, &mut st, &mut type_defs, options)?;
+        let (mod_content, regs_content, enums_content) =
+            generate_peripheral_file_with_enums(device, p, &mut st, &mut type_defs, options)?;
         let mod_name = sanitize_module_name(&p.name);
         files.push(GeneratedFile {
             file_name: format!("{}/mod.rs", mod_name),
             content: mod_content,
+        });
+        files.push(GeneratedFile {
+            file_name: format!("{}/registers.rs", mod_name),
+            content: regs_content,
         });
         if !enums_content.is_empty() {
             files.push(GeneratedFile {
@@ -364,24 +369,23 @@ fn generate_peripheral_file(
     st: &mut GenState,
     type_defs: &mut CodeWriter,
     options: PacOptions,
-) -> Result<(String, String)> {
-    let base_const_root = format!("{}_BASE", sanitize_const_name(&p.name));
-    let mut out = CodeWriter::new();
+) -> Result<(String, String, String)> {
+    let mut mod_out = CodeWriter::new();
+    let mut regs_out = CodeWriter::new();
 
-    out.writeln("#[allow(non_snake_case)]")?;
-    out.writeln("#[allow(non_camel_case_types)]")?;
-    out.writeln("#[allow(dead_code)]")?;
-    out.writeln("")?;
-    out.writeln("use super::*;")?;
-    out.writeln(&format!(
+    regs_out.writeln("use super::*;")?;
+    regs_out.writeln("")?;
+
+    mod_out.writeln("#[allow(non_snake_case)]")?;
+    mod_out.writeln("#[allow(non_camel_case_types)]")?;
+    mod_out.writeln("#[allow(dead_code)]")?;
+    mod_out.writeln("")?;
+    mod_out.writeln("use super::*;")?;
+    mod_out.writeln(&format!(
         "pub const BASE: usize = super::{}_BASE;",
         sanitize_const_name(&p.name)
     ))?;
-    out.writeln("")?;
-
-    out.writeln("#[repr(C)]")?;
-    out.writeln("pub struct RegisterBlock {")?;
-    out.indent();
+    mod_out.writeln("")?;
 
     let items = peripheral_register_items(device, p);
     let ctx = Ctx {
@@ -390,13 +394,59 @@ fn generate_peripheral_file(
         cluster_stack: Vec::new(),
     };
 
-    emit_register_block_items(st, &mut out, type_defs, &ctx, items, 0, options)?;
+    emit_register_block_items(
+        st,
+        &mut CodeWriter::new(),
+        &mut regs_out,
+        type_defs,
+        &ctx,
+        items,
+        0,
+        options,
+    )?;
 
-    out.dedent();
-    out.writeln("}")?;
+    let mut enums_out = CodeWriter::new();
+    if options.emit_field_enums {
+        emit_peripheral_enums(st, device, p, &mut enums_out)?;
+    }
+    let has_enums = !enums_out.s.trim().is_empty();
+
+    if has_enums {
+        mod_out.writeln("pub mod enums;")?;
+        mod_out.writeln("pub use self::enums::*;")?;
+        mod_out.writeln("")?;
+    }
+
+    mod_out.writeln("pub mod registers;")?;
+    mod_out.writeln("pub use self::registers::*;")?;
+    mod_out.writeln("")?;
+
+    if !type_defs.s.trim().is_empty() {
+        regs_out.s.push_str(&type_defs.s);
+        regs_out.s.push('\n');
+        type_defs.s.clear();
+    }
+
+    mod_out.writeln("#[repr(C)]")?;
+    mod_out.writeln("pub struct RegisterBlock {")?;
+    mod_out.indent();
+
+    emit_register_block_items(
+        st,
+        &mut mod_out,
+        &mut CodeWriter::new(),
+        type_defs,
+        &ctx,
+        items,
+        0,
+        options,
+    )?;
+
+    mod_out.dedent();
+    mod_out.writeln("}")?;
 
     emit_reset_impl_for_struct(
-        &mut out,
+        &mut mod_out,
         st,
         type_defs,
         &ctx,
@@ -405,72 +455,54 @@ fn generate_peripheral_file(
         options,
     )?;
 
-    out.writeln(&format!(
+    mod_out.writeln(&format!(
         "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
     ))?;
-    out.writeln(&format!(
+    mod_out.writeln(&format!(
         "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
     ))?;
-
-    let mut enums_out = CodeWriter::new();
-    if options.emit_field_enums {
-        emit_peripheral_enums(st, device, p, &mut enums_out)?;
-    }
-    let has_enums = !enums_out.s.trim().is_empty();
 
     let mut once_regs = Vec::new();
     let mut name_counts = BTreeMap::new();
     collect_once_regs(&ctx, items, 0, "", None, &mut name_counts, &mut once_regs);
     if !once_regs.is_empty() {
         let once_ty = "Once";
-        out.writeln("")?;
-        out.writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
-        out.writeln("///")?;
-        out.writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
-        out.writeln(&format!("pub struct {once_ty} {{"))?;
-        out.indent();
-        out.writeln("base: usize,")?;
+        mod_out.writeln("")?;
+        mod_out.writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
+        mod_out.writeln("///")?;
+        mod_out.writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
+        mod_out.writeln(&format!("pub struct {once_ty} {{"))?;
+        mod_out.indent();
+        mod_out.writeln("base: usize,")?;
         for r in &once_regs {
-            out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
+            mod_out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
         }
-        out.dedent();
-        out.writeln("}")?;
-        out.writeln(&format!("impl {once_ty} {{"))?;
-        out.indent();
-        out.writeln("/// Create tokens for this peripheral.")?;
-        out.writeln("///")?;
-        out.writeln("/// # Safety")?;
-        out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
-        out.writeln("pub unsafe fn new() -> Self {")?;
-        out.indent();
-        out.writeln("let base = BASE;")?;
-        out.writeln("Self {")?;
-        out.indent();
-        out.writeln("base,")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+        mod_out.writeln(&format!("impl {once_ty} {{"))?;
+        mod_out.indent();
+        mod_out.writeln("/// Create tokens for this peripheral.")?;
+        mod_out.writeln("///")?;
+        mod_out.writeln("/// # Safety")?;
+        mod_out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
+        mod_out.writeln("pub unsafe fn new() -> Self {")?;
+        mod_out.indent();
+        mod_out.writeln("let base = BASE;")?;
+        mod_out.writeln("Self {")?;
+        mod_out.indent();
+        mod_out.writeln("base,")?;
         for r in &once_regs {
-            out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
+            mod_out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
         }
-        out.dedent();
-        out.writeln("}")?;
-        out.dedent();
-        out.writeln("}")?;
-        out.dedent();
-        out.writeln("}")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
     }
 
-    if !type_defs.s.trim().is_empty() {
-        out.s.push('\n');
-        out.s.push_str(&type_defs.s);
-        type_defs.s.clear();
-    }
-
-    if has_enums {
-        out.writeln("")?;
-        out.writeln("pub mod enums;")?;
-        out.writeln("pub use self::enums::*;")?;
-    }
-
-    Ok((out.s, enums_out.s))
+    Ok((mod_out.s, regs_out.s, enums_out.s))
 }
 
 fn generate_peripheral_file_with_enums(
@@ -479,7 +511,7 @@ fn generate_peripheral_file_with_enums(
     st: &mut GenState,
     type_defs: &mut CodeWriter,
     options: PacOptions,
-) -> Result<(String, String)> {
+) -> Result<(String, String, String)> {
     generate_peripheral_file(device, p, st, type_defs, options)
 }
 
@@ -1252,7 +1284,16 @@ fn generate_peripheral(
         cluster_stack: Vec::new(),
     };
 
-    emit_register_block_items(st, &mut mod_out, type_defs, &ctx, items, 0, options)?;
+    emit_register_block_items(
+        st,
+        &mut mod_out,
+        &mut CodeWriter::new(),
+        type_defs,
+        &ctx,
+        items,
+        0,
+        options,
+    )?;
 
     mod_out.dedent();
     mod_out.writeln("}")?;
@@ -1344,6 +1385,7 @@ struct Ctx<'a> {
 fn emit_register_block_items(
     st: &mut GenState,
     out: &mut CodeWriter,
+    regs_out: &mut CodeWriter,
     type_defs: &mut CodeWriter,
     ctx: &Ctx<'_>,
     items: &[svd::RegisterBlockItem],
@@ -1402,10 +1444,10 @@ fn emit_register_block_items(
         // Emit actual field.
         match it {
             svd::RegisterBlockItem::Register { register } => {
-                emit_register_field(st, out, type_defs, ctx, &name, register, options)?;
+                emit_register_field(st, out, regs_out, type_defs, ctx, &name, register, options)?;
             }
             svd::RegisterBlockItem::Cluster { cluster } => {
-                emit_cluster_field(st, out, type_defs, ctx, &name, cluster, options)?;
+                emit_cluster_field(st, out, regs_out, type_defs, ctx, &name, cluster, options)?;
             }
         }
 
@@ -1418,6 +1460,7 @@ fn emit_register_block_items(
 fn emit_register_field(
     st: &mut GenState,
     out: &mut CodeWriter,
+    regs_out: &mut CodeWriter,
     type_defs: &mut CodeWriter,
     ctx: &Ctx<'_>,
     field_name: &str,
@@ -1428,7 +1471,6 @@ fn emit_register_field(
     let access = resolve_access(ctx, r);
     let reg_ty = register_wrapper_type(st, type_defs, ctx, r, &base_ty, access, options)?;
     if let Some(dim) = &r.dim {
-        // Only emit as `[T; dim]` if the increment matches the element size.
         if dim.dim_increment == size_bytes {
             out.writeln(&format!(
                 "pub {field_name}: [{reg_ty}; {n} as usize],",
@@ -1451,6 +1493,7 @@ fn emit_register_field(
 fn emit_cluster_field(
     st: &mut GenState,
     out: &mut CodeWriter,
+    regs_out: &mut CodeWriter,
     type_defs: &mut CodeWriter,
     ctx: &Ctx<'_>,
     field_name: &str,
@@ -1537,8 +1580,16 @@ fn cluster_rust_type_and_size(
         // into `type_defs`.
         let mut body = CodeWriter::new();
         body.indent();
-        let end =
-            emit_register_block_items(st, &mut body, type_defs, &child_ctx, &c.items, 0, options)?;
+        let end = emit_register_block_items(
+            st,
+            &mut body,
+            &mut CodeWriter::new(),
+            type_defs,
+            &child_ctx,
+            &c.items,
+            0,
+            options,
+        )?;
 
         type_defs.writeln(&format!("/// Cluster `{}`", c.name))?;
         type_defs.writeln("#[repr(C)]")?;
