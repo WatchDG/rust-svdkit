@@ -757,11 +757,11 @@ pub fn sanitize_module_name(s: &str) -> String {
         out.push(ch);
     }
     if out.is_empty() {
-        "PERIPH".to_string()
+        "periph".to_string()
     } else if is_rust_keyword(&out.to_ascii_lowercase()) {
         format!("{out}_")
     } else {
-        out
+        out.to_ascii_lowercase()
     }
 }
 

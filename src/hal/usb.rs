@@ -907,7 +907,10 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep0 = &*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<pac::USBD::Epin>());\n");
+        s.push_str("                    let ep0 = &*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<");
+        s.push_str("pac::");
+        s.push_str(&self.periph_mod);
+        s.push_str("::Epin>());\n");
         s.push_str("                    ep0.ptr.write(ptr as u32);\n");
         s.push_str("                    ep0.maxcnt.write(maxcnt as u32);\n");
         s.push_str("                }\n");
@@ -919,7 +922,10 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep0 = &*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<pac::USBD::Epout>());\n");
+        s.push_str("                    let ep0 = &*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<");
+        s.push_str("pac::");
+        s.push_str(&self.periph_mod);
+        s.push_str("::Epout>());\n");
         s.push_str("                    ep0.ptr.write(ptr as u32);\n");
         s.push_str("                    ep0.maxcnt.write(maxcnt as u32);\n");
         s.push_str("                }\n");
@@ -927,12 +933,18 @@ impl UsbInfo {
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
-        s.push_str("                unsafe { (&*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<pac::USBD::Epout>())).amount.read() }\n");
+        s.push_str("                unsafe { (&*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<");
+        s.push_str("pac::");
+        s.push_str(&self.periph_mod);
+        s.push_str("::Epout>())).amount.read() }\n");
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
-        s.push_str("                unsafe { (&*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<pac::USBD::Epin>())).amount.read() }\n");
+        s.push_str("                unsafe { (&*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<");
+        s.push_str("pac::");
+        s.push_str(&self.periph_mod);
+        s.push_str("::Epin>())).amount.read() }\n");
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");
@@ -1012,7 +1024,10 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep = &*(self.usb.epin__s_.as_ptr().add(ep_num as usize * 20).cast::<pac::USBD::Epin>());\n");
+        s.push_str("                    let ep = &*(self.usb.epin__s_.as_ptr().add(ep_num as usize * 20).cast::<");
+        s.push_str("pac::");
+        s.push_str(&self.periph_mod);
+        s.push_str("::Epin>());\n");
         s.push_str("                    ep.ptr.write(ptr as u32);\n");
         s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
         s.push_str("                }\n");
@@ -1024,7 +1039,10 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep = &*(self.usb.epout__s_.as_ptr().add(ep_num as usize * 20).cast::<pac::USBD::Epout>());\n");
+        s.push_str("                    let ep = &*(self.usb.epout__s_.as_ptr().add(ep_num as usize * 20).cast::<");
+        s.push_str("pac::");
+        s.push_str(&self.periph_mod);
+        s.push_str("::Epout>());\n");
         s.push_str("                    ep.ptr.write(ptr as u32);\n");
         s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
         s.push_str("                }\n");
@@ -1036,7 +1054,10 @@ impl UsbInfo {
         s.push_str("                    return 0;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    (&*(self.usb.epin__s_.as_ptr().add(ep_num as usize * 20).cast::<pac::USBD::Epin>())).amount.read()\n");
+        s.push_str("                    (&*(self.usb.epin__s_.as_ptr().add(ep_num as usize * 20).cast::<");
+        s.push_str("pac::");
+        s.push_str(&self.periph_mod);
+        s.push_str("::Epin>())).amount.read()\n");
         s.push_str("                }\n");
         s.push_str("            }\n\n");
 
@@ -1046,7 +1067,10 @@ impl UsbInfo {
         s.push_str("                    return 0;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    (&*(self.usb.epout__s_.as_ptr().add(ep_num as usize * 20).cast::<pac::USBD::Epout>())).amount.read()\n");
+        s.push_str("                    (&*(self.usb.epout__s_.as_ptr().add(ep_num as usize * 20).cast::<");
+        s.push_str("pac::");
+        s.push_str(&self.periph_mod);
+        s.push_str("::Epout>())).amount.read()\n");
         s.push_str("                }\n");
         s.push_str("            }\n");
         s.push_str("        }\n");

@@ -2362,8 +2362,6 @@ fn sanitize_field_name(s: &str) -> String {
 }
 
 fn sanitize_module_name(s: &str) -> String {
-    // Keep original casing as much as possible so module name matches the SVD peripheral name.
-    // (Rust allows non-snake-case module identifiers.)
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
         let good = ch.is_ascii_alphanumeric() || ch == '_';
@@ -2374,11 +2372,11 @@ fn sanitize_module_name(s: &str) -> String {
         out.push(ch);
     }
     if out.is_empty() {
-        "PERIPH".to_string()
+        "periph".to_string()
     } else if helpers::is_rust_keyword(&out.to_ascii_lowercase()) {
         format!("{out}_")
     } else {
-        out
+        out.to_ascii_lowercase()
     }
 }
 
