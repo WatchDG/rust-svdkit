@@ -1646,7 +1646,7 @@ fn emit_register_block_items(
         } else if off > cur {
             let gap = off - cur;
             out.writeln(&format!(
-                "pub _reserved{reserved_idx}: [u8; {gap} as usize],"
+                "pub _reserved_{reserved_idx}: [u8; {gap} as usize],"
             ))?;
             reserved_idx += 1;
             cur = off;
@@ -1684,7 +1684,7 @@ fn emit_register_field(
     if let Some(dim) = &r.dim {
         if dim.dim_increment == size_bytes {
             out.writeln(&format!(
-                "pub {field_name}: [{reg_ty}; {n} as usize],",
+                "pub {field_name}: [registers::{reg_ty}; {n} as usize],",
                 n = dim.dim
             ))?;
         } else {
@@ -1696,7 +1696,7 @@ fn emit_register_field(
             out.writeln(&format!("pub {field_name}: [u8; {total} as usize],"))?;
         }
     } else {
-        out.writeln(&format!("pub {field_name}: {reg_ty},"))?;
+        out.writeln(&format!("pub {field_name}: registers::{reg_ty},"))?;
     }
     Ok(())
 }
@@ -1716,7 +1716,7 @@ fn emit_cluster_field(
     if let Some(dim) = &c.dim {
         if dim.dim_increment == cluster_size_bytes {
             out.writeln(&format!(
-                "pub {field_name}: [{cluster_ty}; {n} as usize],",
+                "pub {field_name}: [registers::{cluster_ty}; {n} as usize],",
                 n = dim.dim
             ))?;
         } else {
@@ -1728,7 +1728,7 @@ fn emit_cluster_field(
             out.writeln(&format!("pub {field_name}: [u8; {total} as usize],"))?;
         }
     } else {
-        out.writeln(&format!("pub {field_name}: {cluster_ty},"))?;
+        out.writeln(&format!("pub {field_name}: registers::{cluster_ty},"))?;
     }
     Ok(())
 }
@@ -1773,11 +1773,13 @@ fn cluster_rust_type_and_size(
     };
 
     let fingerprint = cluster_layout_fingerprint(&child_ctx, c);
-    let ty = if let Some(existing) = st.lookup_cluster_type(&base_ty, &fingerprint) {
+    let periph_name = ctx.periph.map(|p| p.name.as_str()).unwrap_or("");
+    let full_base_ty = format!("{}_{}", periph_name, base_ty);
+    let ty = if let Some(existing) = st.lookup_cluster_type(&full_base_ty, &fingerprint) {
         existing
     } else {
-        let new_ty = st.alloc_type_name(base_ty.clone());
-        st.remember_cluster_type(&base_ty, &fingerprint, &new_ty);
+        let new_ty = st.alloc_type_name(full_base_ty.clone());
+        st.remember_cluster_type(&full_base_ty, &fingerprint, &new_ty);
         new_ty
     };
 
@@ -2569,7 +2571,8 @@ fn sanitize_field_name(s: &str) -> String {
     } else if s_lower.contains("dirclr") {
         s.replace("DIRCLR", "dir_clr").replace("dirclr", "dir_clr")
     } else if s_lower.contains("detectmode") {
-        s.replace("DETECTMODE", "detect_mode").replace("detectmode", "detect_mode")
+        s.replace("DETECTMODE", "detect_mode")
+            .replace("detectmode", "detect_mode")
     } else {
         s
     };

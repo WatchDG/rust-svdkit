@@ -281,7 +281,7 @@ impl GpioPortInfo {
 
         if let Some(ref level_enum) = self.level_enum_name {
             s.push_str("            #[inline(always)]\n");
-            s.push_str(&format!("            pub fn set_level(&self, level: super::super::pac::{}::{level_enum}) {{\n", self.periph_mod));
+            s.push_str(&format!("            pub fn set_level(&self, level: super::super::pac::{}::enums::{level_enum}) {{\n", self.periph_mod));
             s.push_str(&format!(
                 "                let mask = 1u32 << (self.pin as u32);\n"
             ));
@@ -298,7 +298,7 @@ impl GpioPortInfo {
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn set_high(&self) {\n");
             s.push_str(&format!(
-                "                self.set_level(super::super::pac::{}::{level_enum}::High);\n",
+                "                self.set_level(super::super::pac::{}::enums::{level_enum}::High);\n",
                 self.periph_mod
             ));
             s.push_str("            }\n\n");
@@ -306,7 +306,7 @@ impl GpioPortInfo {
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn set_low(&self) {\n");
             s.push_str(&format!(
-                "                self.set_level(super::super::pac::{}::{level_enum}::Low);\n",
+                "                self.set_level(super::super::pac::{}::enums::{level_enum}::Low);\n",
                 self.periph_mod
             ));
             s.push_str("            }\n");
@@ -777,7 +777,8 @@ pub fn sanitize_field_name(s: &str) -> String {
     } else if s_lower.contains("dirclr") {
         s.replace("DIRCLR", "dir_clr").replace("dirclr", "dir_clr")
     } else if s_lower.contains("detectmode") {
-        s.replace("DETECTMODE", "detect_mode").replace("detectmode", "detect_mode")
+        s.replace("DETECTMODE", "detect_mode")
+            .replace("detectmode", "detect_mode")
     } else {
         s
     };

@@ -1164,7 +1164,8 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
         let Some((tasks_startepin_name, _)) = gpio::find_register(items, "TASKS_STARTEPIN") else {
             continue;
         };
-        let Some((tasks_startepout_name, _)) = gpio::find_register(items, "TASKS_STARTEPOUT") else {
+        let Some((tasks_startepout_name, _)) = gpio::find_register(items, "TASKS_STARTEPOUT")
+        else {
             continue;
         };
         let Some((epin_name, _)) = gpio::find_register(items, "EPIN") else {
