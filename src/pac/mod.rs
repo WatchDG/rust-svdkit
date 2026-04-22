@@ -199,31 +199,48 @@ macro_rules! impl_wt_register {
 
 #[macro_export]
 macro_rules! define_enum {
-    ($name:ident : $type:ty , $($variant:ident = $value:expr),* $(,)?) => {
+    (
+        $(#[$doc:meta])*
+        $name:ident : $type:ty,
+        $(
+            $(#[$vdoc:meta])*
+            $variant:ident = $value:expr
+        ),+ $(,)?
+    ) => {
+        $(#[$doc])*
         #[repr($type)]
         #[derive(Copy, Clone, Debug, PartialEq, Eq)]
         pub enum $name {
-            $($variant = $value),*
+            $(
+                $(#[$vdoc])*
+                $variant = $value,
+            )*
         }
+
         impl $name {
             #[inline(always)]
             pub const fn bits(self) -> $type {
                 self as $type
             }
+
             #[inline(always)]
             pub const fn from_bits(v: $type) -> Option<Self> {
                 match v {
-                    $($value => Some(Self::$variant)),*,
+                    $(
+                        $value => Some(Self::$variant),
+                    )*
                     _ => None,
                 }
             }
         }
+
         impl From<$name> for $type {
             #[inline(always)]
             fn from(v: $name) -> $type {
                 v.bits()
             }
         }
+
         impl core::convert::TryFrom<$type> for $name {
             type Error = ();
             #[inline(always)]
@@ -3165,16 +3182,21 @@ fn emit_enum_for_field(
         *n += 1;
     }
 
-    out.writeln(&format!(
-        "/// {}.{} :: field `{}`",
-        device.name, reg_path, f.name
-    ))?;
-
     let mut any_numeric = false;
     let mut enum_body = String::new();
-    for (name, val, desc) in &variants {
-        if desc.is_some() {
-            out.writeln(&format!("/// {}", doc_escape(desc.as_ref().unwrap())))?;
+
+    enum_body.push_str(&format!(
+        r#"    #[doc = "{}.{} :: field `{}`"]"#,
+        device.name, reg_path, f.name
+    ));
+
+    let variants_start = enum_body.len();
+    enum_body.push_str(&format!("\n    {ty} : {repr},"));
+
+    let last_idx = variants.len().saturating_sub(1);
+    for (i, (name, val, desc)) in variants.iter().enumerate() {
+        if let Some(d) = desc {
+            enum_body.push_str(&format!("\n    #[doc = \"{}\"]", doc_escape(d)));
         }
         if let Some(v) = val {
             let max = if bit_width >= 64 {
@@ -3183,30 +3205,28 @@ fn emit_enum_for_field(
                 (1u64 << bit_width) - 1
             };
             if *v > max {
-                out.writeln(&format!(
-                    "// {name} = {v}, // value does not fit into {bit_width} bits"
-                ))?;
+                enum_body.push_str(&format!(
+                    "\n    // {name} = {v}, // value does not fit into {bit_width} bits"
+                ));
                 continue;
             }
             any_numeric = true;
-            if !enum_body.is_empty() {
-                enum_body.push_str(", ");
-            }
-            enum_body.push_str(&format!("{name} = {v}"));
+            let comma = if i < last_idx { "," } else { "" };
+            enum_body.push_str(&format!("\n    {name} = {v}{comma}"));
         } else {
-            out.writeln(&format!("// {name} = <non-const value>,",))?;
+            enum_body.push_str(&format!("\n    // {name} = <non-const value>,"));
         }
     }
 
     if !any_numeric {
-        out.writeln("/// No fully-constant values in SVD; placeholder.")?;
-        if !enum_body.is_empty() {
-            enum_body.push_str(", ");
-        }
-        enum_body.push_str("__Reserved = 0");
+        enum_body.push_str(
+            r#"
+    #[doc = "No fully-constant values in SVD; placeholder."]"#,
+        );
+        enum_body.push_str(&format!("\n    __Reserved = 0"));
     }
 
-    out.writeln(&format!("define_enum!({ty} : {repr} , {});", enum_body))?;
+    out.writeln(&format!("define_enum!(\n{enum_body}\n);"))?;
     out.writeln("")?;
 
     Ok(())

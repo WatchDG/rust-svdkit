@@ -140,31 +140,48 @@ macro_rules! impl_wt_register {
 
 #[macro_export]
 macro_rules! define_enum {
-    ($name:ident : $type:ty , $($variant:ident = $value:expr),* $(,)?) => {
+    (
+        $(#[$doc:meta])*
+        $name:ident : $type:ty,
+        $(
+            $(#[$vdoc:meta])*
+            $variant:ident = $value:expr
+        ),+ $(,)?
+    ) => {
+        $(#[$doc])*
         #[repr($type)]
         #[derive(Copy, Clone, Debug, PartialEq, Eq)]
         pub enum $name {
-            $($variant = $value),*
+            $(
+                $(#[$vdoc])*
+                $variant = $value,
+            )*
         }
+
         impl $name {
             #[inline(always)]
             pub const fn bits(self) -> $type {
                 self as $type
             }
+
             #[inline(always)]
             pub const fn from_bits(v: $type) -> Option<Self> {
                 match v {
-                    $($value => Some(Self::$variant)),*,
+                    $(
+                        $value => Some(Self::$variant),
+                    )*
                     _ => None,
                 }
             }
         }
+
         impl From<$name> for $type {
             #[inline(always)]
             fn from(v: $name) -> $type {
                 v.bits()
             }
         }
+
         impl core::convert::TryFrom<$type> for $name {
             type Error = ();
             #[inline(always)]
