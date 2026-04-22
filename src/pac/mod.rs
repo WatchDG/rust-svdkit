@@ -1280,7 +1280,7 @@ impl GenState {
         let n = self.type_name_counters.entry(base.clone()).or_insert(0);
         if *n == 0 {
             *n = 1;
-            base
+            fix_register_case(&base)
         } else {
             let out = format!("{base}_{}", *n);
             *n += 1;
@@ -2572,8 +2572,24 @@ fn sanitize_type_name(s: &str) -> String {
 }
 
 fn doc_escape(s: &str) -> String {
-    // Very small escape: collapse newlines to spaces for doc comments.
     s.replace('\n', " ").replace('\r', " ")
+}
+
+fn fix_register_case(name: &str) -> String {
+    let name = if name.ends_with("Outset") {
+        name.replacen("Outset", "OutSet", 1)
+    } else if name.ends_with("Outclr") {
+        name.replacen("Outclr", "OutClr", 1)
+    } else if name.ends_with("Dirset") {
+        name.replacen("Dirset", "DirSet", 1)
+    } else if name.ends_with("Dirclr") {
+        name.replacen("Dirclr", "DirClr", 1)
+    } else if name.ends_with("Detectmode") {
+        name.replacen("Detectmode", "DetectMode", 1)
+    } else {
+        name.to_string()
+    };
+    name
 }
 
 fn ctx_reg_path(ctx: &Ctx<'_>, reg_name: &str) -> String {
