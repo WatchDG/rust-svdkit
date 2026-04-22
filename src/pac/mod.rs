@@ -2559,6 +2559,20 @@ fn sanitize_const_name(s: &str) -> String {
 
 fn sanitize_field_name(s: &str) -> String {
     let s = s.replace("[%s]", "").replace("%s", "");
+    let s_lower = s.to_ascii_lowercase();
+    let s = if s_lower.contains("outset") {
+        s.replace("OUTSET", "out_set").replace("outset", "out_set")
+    } else if s_lower.contains("outclr") {
+        s.replace("OUTCLR", "out_clr").replace("outclr", "out_clr")
+    } else if s_lower.contains("dirset") {
+        s.replace("DIRSET", "dir_set").replace("dirset", "dir_set")
+    } else if s_lower.contains("dirclr") {
+        s.replace("DIRCLR", "dir_clr").replace("dirclr", "dir_clr")
+    } else if s_lower.contains("detectmode") {
+        s.replace("DETECTMODE", "detect_mode").replace("detectmode", "detect_mode")
+    } else {
+        s
+    };
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
         let good = ch.is_ascii_alphanumeric() || ch == '_';
