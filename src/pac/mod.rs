@@ -3108,18 +3108,28 @@ fn emit_enum_for_field(
     // Base enum name: prefer headerEnumName/name; otherwise derive from path.
     // For fields like PIN0, PIN1, PIN2, extract common base (PIN) to enable deduplication.
     let field_name_for_enum = helpers::extract_enum_base_name(&f.name);
+    let (usage_prefix, cap_first) = match evs.usage {
+        Some(svd::EnumUsage::Read) => ("Read", true),
+        Some(svd::EnumUsage::Write) => ("Write", true),
+        _ => ("", false),
+    };
     let base = evs
         .header_enum_name
         .as_deref()
         .or(evs.name.as_deref())
         .map(sanitize_type_name)
         .unwrap_or_else(|| {
-            sanitize_type_name(&format!(
+            let name = sanitize_type_name(&format!(
                 "{}_{}_{}",
                 p.name,
                 reg_path.replace('.', "_"),
                 field_name_for_enum
-            ))
+            ));
+            if cap_first {
+                format!("{}{}", usage_prefix, name)
+            } else {
+                name
+            }
         });
 
     let bit_width = helpers::field_bit_width(f);
