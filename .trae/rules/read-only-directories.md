@@ -3,8 +3,9 @@
 > Agents MUST treat the following directories as read-only:
 
 - `generated` - auto-generated code
-- `svds` - SVD files
 - `examples` - example code
+- `tests/svds` - SVD test files
+- `tests/snapshots` - snapshot test files
 
 All operations that would create, modify, or delete files within these directories are **prohibited**.
 
