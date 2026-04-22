@@ -3058,8 +3058,6 @@ fn emit_peripheral_enums(
         for f in &r.field {
             for evs in &f.enumerated_values {
                 if !has_enums {
-                    out.writeln("")?;
-                    out.writeln("/// Field enumerations (from CMSIS-SVD <enumeratedValues>).")?;
                     has_enums = true;
                 }
                 emit_enum_for_field(device, p, r, f, evs, st, out, path)?;
