@@ -56,6 +56,149 @@ pub fn generate_device_dir(device: &svd::Device) -> Result<GeneratedDir> {
     generate_device_dir_with_options(device, PacOptions::full())
 }
 
+pub fn generate_macros_file() -> String {
+    r#"#[macro_export]
+macro_rules! impl_ro_register {
+    ($name:ident, $ty:ty) => {
+        impl $name {
+            #[inline(always)]
+            pub fn read(&self) -> $ty {
+                self.0.read()
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_wo_register {
+    ($name:ident, $ty:ty) => {
+        impl $name {
+            #[inline(always)]
+            pub fn write(&self, v: $ty) {
+                self.0.write(v)
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_rw_register {
+    ($name:ident, $ty:ty) => {
+        impl $name {
+            #[inline(always)]
+            pub fn read(&self) -> $ty {
+                self.0.read()
+            }
+            #[inline(always)]
+            pub fn write(&self, v: $ty) {
+                self.0.write(v)
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_w1s_register {
+    ($name:ident, $ty:ty) => {
+        impl $name {
+            #[inline(always)]
+            pub fn read(&self) -> $ty {
+                self.0.read()
+            }
+            #[inline(always)]
+            pub fn write(&self, v: $ty) {
+                self.0.write(v)
+            }
+            #[inline(always)]
+            pub fn set_bits(&self, mask: $ty) {
+                self.0.set_bits(mask)
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_w1c_register {
+    ($name:ident, $ty:ty) => {
+        impl $name {
+            #[inline(always)]
+            pub fn read(&self) -> $ty {
+                self.0.read()
+            }
+            #[inline(always)]
+            pub fn write(&self, v: $ty) {
+                self.0.write(v)
+            }
+            #[inline(always)]
+            pub fn clear_bits(&self, mask: $ty) {
+                self.0.clear_bits(mask)
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_w0s_register {
+    ($name:ident, $ty:ty) => {
+        impl $name {
+            #[inline(always)]
+            pub fn read(&self) -> $ty {
+                self.0.read()
+            }
+            #[inline(always)]
+            pub fn write(&self, v: $ty) {
+                self.0.write(v)
+            }
+            #[inline(always)]
+            pub fn set_bits(&self, mask: $ty) {
+                self.0.set_bits(mask)
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_w0c_register {
+    ($name:ident, $ty:ty) => {
+        impl $name {
+            #[inline(always)]
+            pub fn read(&self) -> $ty {
+                self.0.read()
+            }
+            #[inline(always)]
+            pub fn write(&self, v: $ty) {
+                self.0.write(v)
+            }
+            #[inline(always)]
+            pub fn clear_bits(&self, mask: $ty) {
+                self.0.clear_bits(mask)
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_wt_register {
+    ($name:ident, $ty:ty) => {
+        impl $name {
+            #[inline(always)]
+            pub fn read(&self) -> $ty {
+                self.0.read()
+            }
+            #[inline(always)]
+            pub fn write(&self, v: $ty) {
+                self.0.write(v)
+            }
+            #[inline(always)]
+            pub fn toggle_bits(&self, mask: $ty) {
+                self.0.toggle_bits(mask)
+            }
+        }
+    };
+}
+"#.to_string()
+}
+
 pub fn generate_device_dir_with_options(
     device: &svd::Device,
     options: PacOptions,
@@ -322,6 +465,10 @@ pub fn generate_device_dir_with_options(
     }
     mod_lines.push("".to_string());
 
+    mod_lines.push("#[macro_use]".to_string());
+    mod_lines.push("mod macros;".to_string());
+    mod_lines.push("".to_string());
+
     for p in &periphs {
         let mod_name = sanitize_module_name(&p.name);
         mod_lines.push(format!("pub mod {mod_name};"));
@@ -332,6 +479,11 @@ pub fn generate_device_dir_with_options(
     files.push(GeneratedFile {
         file_name: "mod.rs".to_string(),
         content: mod_lines.join("\n"),
+    });
+
+    files.push(GeneratedFile {
+        file_name: "macros.rs".to_string(),
+        content: generate_macros_file(),
     });
 
     let mut st = GenState::new();
@@ -2522,58 +2674,36 @@ fn register_wrapper_type(
     }
     out.writeln("#[repr(transparent)]")?;
     out.writeln(&format!("pub struct {ty}({inner});"))?;
+    out.writeln("")?;
 
-    // Basic operations.
-    out.writeln(&format!("impl {ty} {{"))?;
-    out.indent();
-    if matches!(
+    let has_read = matches!(
         access.access,
         svd::AccessType::ReadOnly | svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce
-    ) {
-        out.writeln("#[inline(always)]")?;
-        out.writeln(&format!(
-            "pub fn read(&self) -> {base_ty} {{ self.0.read() }}"
-        ))?;
-    }
-    if matches!(
+    );
+    let has_write = matches!(
         access.access,
         svd::AccessType::WriteOnly
             | svd::AccessType::WriteOnce
             | svd::AccessType::ReadWrite
             | svd::AccessType::ReadWriteOnce
-    ) {
-        out.writeln("#[inline(always)]")?;
-        out.writeln(&format!(
-            "pub fn write(&self, v: {base_ty}) {{ self.0.write(v) }}"
-        ))?;
-    }
-    match access.write_model {
-        RegWriteModel::W1S | RegWriteModel::W0S => {
-            if !matches!(access.access, svd::AccessType::ReadOnly) {
-                out.writeln("#[inline(always)]")?;
-                out.writeln(&format!(
-                    "pub fn set_bits(&self, mask: {base_ty}) {{ self.0.set_bits(mask) }}"
-                ))?;
-            }
-        }
-        RegWriteModel::W1C | RegWriteModel::W0C => {
-            if !matches!(access.access, svd::AccessType::ReadOnly) {
-                out.writeln("#[inline(always)]")?;
-                out.writeln(&format!(
-                    "pub fn clear_bits(&self, mask: {base_ty}) {{ self.0.clear_bits(mask) }}"
-                ))?;
-            }
-        }
-        RegWriteModel::WT => {
-            if !matches!(access.access, svd::AccessType::ReadOnly) {
-                out.writeln("#[inline(always)]")?;
-                out.writeln(&format!(
-                    "pub fn toggle_bits(&self, mask: {base_ty}) {{ self.0.toggle_bits(mask) }}"
-                ))?;
-            }
-        }
-        RegWriteModel::Normal => {}
-    }
+    );
+    let write_model = access.write_model;
+
+    let macro_name = match (has_read, has_write, write_model) {
+        (true, false, _) => "impl_ro_register",
+        (false, true, RegWriteModel::Normal) => "impl_wo_register",
+        (true, true, RegWriteModel::Normal) => "impl_rw_register",
+        (_, true, RegWriteModel::W1S) => "impl_w1s_register",
+        (_, true, RegWriteModel::W1C) => "impl_w1c_register",
+        (_, true, RegWriteModel::W0S) => "impl_w0s_register",
+        (_, true, RegWriteModel::W0C) => "impl_w0c_register",
+        (_, true, RegWriteModel::WT) => "impl_wt_register",
+        _ => "impl_rw_register",
+    };
+
+    out.writeln(&format!("{macro_name}!({ty}, {base_ty});"))?;
+    out.writeln(&format!("impl {ty} {{"))?;
+    out.indent();
 
     // Field enum helpers.
     if options.emit_field_enums && options.emit_field_methods && !r.field.is_empty() {
