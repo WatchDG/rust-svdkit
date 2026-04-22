@@ -3206,10 +3206,7 @@ fn emit_enum_for_field(
         enum_body.push_str("__Reserved = 0");
     }
 
-    out.writeln(&format!(
-        "define_enum!({ty} : {repr} , {});",
-        enum_body
-    ))?;
+    out.writeln(&format!("define_enum!({ty} : {repr} , {});", enum_body))?;
     out.writeln("")?;
 
     Ok(())
