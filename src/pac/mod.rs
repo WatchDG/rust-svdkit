@@ -196,7 +196,8 @@ macro_rules! impl_wt_register {
         }
     };
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 pub fn generate_device_dir_with_options(
@@ -2674,7 +2675,6 @@ fn register_wrapper_type(
     }
     out.writeln("#[repr(transparent)]")?;
     out.writeln(&format!("pub struct {ty}({inner});"))?;
-    out.writeln("")?;
 
     let has_read = matches!(
         access.access,
@@ -2702,10 +2702,9 @@ fn register_wrapper_type(
     };
 
     out.writeln(&format!("{macro_name}!({ty}, {base_ty});"))?;
-    out.writeln(&format!("impl {ty} {{"))?;
-    out.indent();
 
     // Field enum helpers.
+    let mut has_field_methods = false;
     if options.emit_field_enums && options.emit_field_methods && !r.field.is_empty() {
         let reg_bits = (base_ty_bits(base_ty) as u64).max(1);
         let reg_path_key = ctx_reg_path(ctx, &r.name);
@@ -2772,6 +2771,11 @@ fn register_wrapper_type(
                         | svd::AccessType::ReadWrite
                         | svd::AccessType::ReadWriteOnce
                 ) {
+                    if !has_field_methods {
+                        has_field_methods = true;
+                        out.writeln(&format!("impl {ty} {{"))?;
+                        out.indent();
+                    }
                     out.writeln("")?;
                     out.writeln(&format!("/// Field `{}`", f.name))?;
                     if let Some(d) = &f.description {
@@ -2810,6 +2814,11 @@ fn register_wrapper_type(
                     svd::AccessType::ReadWrite | svd::AccessType::ReadWriteOnce
                 ) && access.write_model == RegWriteModel::Normal
                 {
+                    if !has_field_methods {
+                        has_field_methods = true;
+                        out.writeln(&format!("impl {ty} {{"))?;
+                        out.indent();
+                    }
                     let set_name = if read_pick.as_ref().map(|x| &x.1) == Some(enum_ty) {
                         format!("set_{method_base}")
                     } else {
@@ -2897,6 +2906,11 @@ fn register_wrapper_type(
                         }
                     };
 
+                    if !has_field_methods {
+                        has_field_methods = true;
+                        out.writeln(&format!("impl {ty} {{"))?;
+                        out.indent();
+                    }
                     out.writeln("")?;
                     out.writeln("#[inline(always)]")?;
                     out.writeln(&format!(
@@ -2918,8 +2932,10 @@ fn register_wrapper_type(
         }
     }
 
-    out.dedent();
-    out.writeln("}")?;
+    if has_field_methods {
+        out.dedent();
+        out.writeln("}")?;
+    }
     out.writeln("")?;
 
     Ok(ty)

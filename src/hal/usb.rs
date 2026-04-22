@@ -907,7 +907,9 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep0 = &*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<");
+        s.push_str(
+            "                    let ep0 = &*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<",
+        );
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epin>());\n");
@@ -922,7 +924,9 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep0 = &*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<");
+        s.push_str(
+            "                    let ep0 = &*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<",
+        );
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epout>());\n");
@@ -1054,7 +1058,9 @@ impl UsbInfo {
         s.push_str("                    return 0;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    (&*(self.usb.epin__s_.as_ptr().add(ep_num as usize * 20).cast::<");
+        s.push_str(
+            "                    (&*(self.usb.epin__s_.as_ptr().add(ep_num as usize * 20).cast::<",
+        );
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epin>())).amount.read()\n");
@@ -1067,7 +1073,9 @@ impl UsbInfo {
         s.push_str("                    return 0;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    (&*(self.usb.epout__s_.as_ptr().add(ep_num as usize * 20).cast::<");
+        s.push_str(
+            "                    (&*(self.usb.epout__s_.as_ptr().add(ep_num as usize * 20).cast::<",
+        );
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epout>())).amount.read()\n");
