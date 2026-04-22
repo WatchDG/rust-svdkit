@@ -196,6 +196,43 @@ macro_rules! impl_wt_register {
         }
     };
 }
+
+#[macro_export]
+macro_rules! define_enum {
+    ($name:ident : $type:ty , $($variant:ident = $value:expr),* $(,)?) => {
+        #[repr($type)]
+        #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+        pub enum $name {
+            $($variant = $value),*
+        }
+        impl $name {
+            #[inline(always)]
+            pub const fn bits(self) -> $type {
+                self as $type
+            }
+            #[inline(always)]
+            pub const fn from_bits(v: $type) -> Option<Self> {
+                match v {
+                    $($value => Some(Self::$variant)),*,
+                    _ => None,
+                }
+            }
+        }
+        impl From<$name> for $type {
+            #[inline(always)]
+            fn from(v: $name) -> $type {
+                v.bits()
+            }
+        }
+        impl core::convert::TryFrom<$type> for $name {
+            type Error = ();
+            #[inline(always)]
+            fn try_from(v: $type) -> core::result::Result<Self, ()> {
+                Self::from_bits(v).ok_or(())
+            }
+        }
+    };
+}
 "#
     .to_string()
 }
@@ -3132,19 +3169,14 @@ fn emit_enum_for_field(
         "/// {}.{} :: field `{}`",
         device.name, reg_path, f.name
     ))?;
-    out.writeln(&format!("#[repr({repr})]"))?;
-    out.writeln("#[derive(Copy, Clone, Debug, PartialEq, Eq)]")?;
-    out.writeln(&format!("pub enum {ty} {{"))?;
-    out.indent();
 
     let mut any_numeric = false;
-    let mut numeric_variants: Vec<(String, u64)> = Vec::new();
+    let mut enum_body = String::new();
     for (name, val, desc) in &variants {
-        if let Some(d) = desc {
-            out.writeln(&format!("/// {}", doc_escape(d)))?;
+        if desc.is_some() {
+            out.writeln(&format!("/// {}", doc_escape(desc.as_ref().unwrap())))?;
         }
         if let Some(v) = val {
-            // Ensure discriminant fits into the chosen repr (based on field width).
             let max = if bit_width >= 64 {
                 u64::MAX
             } else {
@@ -3157,57 +3189,27 @@ fn emit_enum_for_field(
                 continue;
             }
             any_numeric = true;
-            out.writeln(&format!("{name} = {v},"))?;
-            numeric_variants.push((name.clone(), *v));
+            if !enum_body.is_empty() {
+                enum_body.push_str(", ");
+            }
+            enum_body.push_str(&format!("{name} = {v}"));
         } else {
             out.writeln(&format!("// {name} = <non-const value>,",))?;
         }
     }
 
     if !any_numeric {
-        // Rust enums can't be empty; provide a placeholder.
         out.writeln("/// No fully-constant values in SVD; placeholder.")?;
-        out.writeln("__Reserved = 0,")?;
+        if !enum_body.is_empty() {
+            enum_body.push_str(", ");
+        }
+        enum_body.push_str("__Reserved = 0");
     }
 
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln(&format!("impl {ty} {{"))?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
     out.writeln(&format!(
-        "pub const fn bits(self) -> {repr} {{ self as {repr} }}"
+        "define_enum!({ty} : {repr} , {});",
+        enum_body
     ))?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln(&format!(
-        "pub const fn from_bits(v: {repr}) -> Option<Self> {{"
-    ))?;
-    out.indent();
-    out.writeln("match v {")?;
-    out.indent();
-    for (name, v) in &numeric_variants {
-        out.writeln(&format!("{v} => Some(Self::{name}),"))?;
-    }
-    out.writeln("_ => None,")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln(&format!("impl From<{ty}> for {repr} {{"))?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln(&format!("fn from(v: {ty}) -> {repr} {{ v.bits() }}"))?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln(&format!("impl core::convert::TryFrom<{repr}> for {ty} {{"))?;
-    out.indent();
-    out.writeln("type Error = ();")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln(&format!("fn try_from(v: {repr}) -> core::result::Result<Self, ()> {{ Self::from_bits(v).ok_or(()) }}"))?;
-    out.dedent();
-    out.writeln("}")?;
     out.writeln("")?;
 
     Ok(())
