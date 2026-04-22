@@ -766,6 +766,7 @@ pub fn sanitize_module_name(s: &str) -> String {
 }
 
 pub fn sanitize_field_name(s: &str) -> String {
+    let s = s.replace("[%s]", "").replace("%s", "");
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
         let good = ch.is_ascii_alphanumeric() || ch == '_';

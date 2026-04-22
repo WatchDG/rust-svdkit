@@ -2558,6 +2558,7 @@ fn sanitize_const_name(s: &str) -> String {
 }
 
 fn sanitize_field_name(s: &str) -> String {
+    let s = s.replace("[%s]", "").replace("%s", "");
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
         let good = ch.is_ascii_alphanumeric() || ch == '_';

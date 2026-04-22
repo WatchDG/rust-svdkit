@@ -564,6 +564,13 @@ pub struct UsbInfo {
     field_events_endepout: String,
     field_events_usbreset: String,
     field_events_usbevent: String,
+
+    field_tasks_startepin: String,
+    field_tasks_startepout: String,
+    field_events_endepin_array: String,
+    field_events_endepout_array: String,
+    field_epin: String,
+    field_epout: String,
 }
 
 impl UsbInfo {
@@ -811,7 +818,8 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str(&format!(
-            "                self.usb.tasks_startepin__s_[ep_num].write(1);\n",
+            "                self.usb.{}[ep_num].write(1);\n",
+            self.field_tasks_startepin
         ));
         s.push_str("            }\n\n");
 
@@ -821,7 +829,8 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str(&format!(
-            "                self.usb.tasks_startepout__s_[ep_num].write(1);\n",
+            "                self.usb.{}[ep_num].write(1);\n",
+            self.field_tasks_startepout
         ));
         s.push_str("            }\n\n");
 
@@ -907,9 +916,10 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str(
-            "                    let ep0 = &*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<",
-        );
+        s.push_str(&format!(
+            "                    let ep0 = &*(self.usb.{}.as_ptr().add(0 * 20).cast::<",
+            self.field_epin
+        ));
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epin>());\n");
@@ -924,9 +934,10 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str(
-            "                    let ep0 = &*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<",
-        );
+        s.push_str(&format!(
+            "                    let ep0 = &*(self.usb.{}.as_ptr().add(0 * 20).cast::<",
+            self.field_epout
+        ));
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epout>());\n");
@@ -937,7 +948,10 @@ impl UsbInfo {
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
-        s.push_str("                unsafe { (&*(self.usb.epout__s_.as_ptr().add(0 * 20).cast::<");
+        s.push_str(&format!(
+            "                unsafe {{ (&*(self.usb.{}.as_ptr().add(0 * 20).cast::<",
+            self.field_epout
+        ));
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epout>())).amount.read() }\n");
@@ -945,7 +959,10 @@ impl UsbInfo {
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
-        s.push_str("                unsafe { (&*(self.usb.epin__s_.as_ptr().add(0 * 20).cast::<");
+        s.push_str(&format!(
+            "                unsafe {{ (&*(self.usb.{}.as_ptr().add(0 * 20).cast::<",
+            self.field_epin
+        ));
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epin>())).amount.read() }\n");
@@ -1028,7 +1045,10 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep = &*(self.usb.epin__s_.as_ptr().add(ep_num as usize * 20).cast::<");
+        s.push_str(&format!(
+            "                    let ep = &*(self.usb.{}.as_ptr().add(ep_num as usize * 20).cast::<",
+            self.field_epin
+        ));
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epin>());\n");
@@ -1043,7 +1063,10 @@ impl UsbInfo {
         s.push_str("                    return;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str("                    let ep = &*(self.usb.epout__s_.as_ptr().add(ep_num as usize * 20).cast::<");
+        s.push_str(&format!(
+            "                    let ep = &*(self.usb.{}.as_ptr().add(ep_num as usize * 20).cast::<",
+            self.field_epout
+        ));
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epout>());\n");
@@ -1058,9 +1081,10 @@ impl UsbInfo {
         s.push_str("                    return 0;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str(
-            "                    (&*(self.usb.epin__s_.as_ptr().add(ep_num as usize * 20).cast::<",
-        );
+        s.push_str(&format!(
+            "                    (&*(self.usb.{}.as_ptr().add(ep_num as usize * 20).cast::<",
+            self.field_epin
+        ));
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epin>())).amount.read()\n");
@@ -1073,9 +1097,10 @@ impl UsbInfo {
         s.push_str("                    return 0;\n");
         s.push_str("                }\n");
         s.push_str("                unsafe {\n");
-        s.push_str(
-            "                    (&*(self.usb.epout__s_.as_ptr().add(ep_num as usize * 20).cast::<",
-        );
+        s.push_str(&format!(
+            "                    (&*(self.usb.{}.as_ptr().add(ep_num as usize * 20).cast::<",
+            self.field_epout
+        ));
         s.push_str("pac::");
         s.push_str(&self.periph_mod);
         s.push_str("::Epout>())).amount.read()\n");
@@ -1111,7 +1136,7 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
         let Some((epouten_name, _)) = gpio::find_register(items, "EPOUTEN") else {
             continue;
         };
-        let Some((tasks_startein_name, _)) = gpio::find_register(items, "TASKS_STARTEPIN") else {
+        let Some((tasks_startein_name, _)) = gpio::find_register(items, "TASKS_STARTEIN") else {
             continue;
         };
         let Some((tasks_staroutep_name, _)) = gpio::find_register(items, "TASKS_STARTEPOUT") else {
@@ -1136,6 +1161,18 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
         let Some((events_usbevent_name, _)) = gpio::find_register(items, "EVENTS_USBEVENT") else {
             continue;
         };
+        let Some((tasks_startepin_name, _)) = gpio::find_register(items, "TASKS_STARTEPIN") else {
+            continue;
+        };
+        let Some((tasks_startepout_name, _)) = gpio::find_register(items, "TASKS_STARTEPOUT") else {
+            continue;
+        };
+        let Some((epin_name, _)) = gpio::find_register(items, "EPIN") else {
+            continue;
+        };
+        let Some((epout_name, _)) = gpio::find_register(items, "EPOUT") else {
+            continue;
+        };
 
         out.push(UsbInfo {
             periph_name: p.name.clone(),
@@ -1156,6 +1193,13 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
             field_events_endepout: gpio::sanitize_field_name(&events_endepout_name),
             field_events_usbreset: gpio::sanitize_field_name(&events_usbreset_name),
             field_events_usbevent: gpio::sanitize_field_name(&events_usbevent_name),
+
+            field_tasks_startepin: gpio::sanitize_field_name(&tasks_startepin_name),
+            field_tasks_startepout: gpio::sanitize_field_name(&tasks_startepout_name),
+            field_events_endepin_array: gpio::sanitize_field_name(&events_endepin_name),
+            field_events_endepout_array: gpio::sanitize_field_name(&events_endepout_name),
+            field_epin: gpio::sanitize_field_name(&epin_name),
+            field_epout: gpio::sanitize_field_name(&epout_name),
         });
     }
     out
