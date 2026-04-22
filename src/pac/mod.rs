@@ -655,7 +655,11 @@ fn generate_peripheral_file(
         mod_out.writeln("}")?;
     }
 
-    Ok((mod_out.s, regs_out.s, enums_out.s))
+    Ok((
+        mod_out.into_string(),
+        regs_out.into_string(),
+        enums_out.into_string(),
+    ))
 }
 
 fn generate_peripheral_file_with_enums(
@@ -2460,6 +2464,10 @@ impl CodeWriter {
         self.s.push_str(line);
         self.s.push('\n');
         Ok(())
+    }
+
+    fn into_string(self) -> String {
+        format!("{}\n", self.s.trim_end())
     }
 }
 
