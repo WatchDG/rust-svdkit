@@ -511,15 +511,6 @@ pub fn generate_device_dir_with_options(
     mod_lines.push(format!("pub const _PRIO_BITS: u8 = {prio_bits}u8;"));
     mod_lines.push("".to_string());
 
-    for p in &periphs {
-        let cname = sanitize_const_name(&p.name);
-        mod_lines.push(format!(
-            "pub const {cname}_BASE: usize = 0x{:08X};",
-            p.base_address
-        ));
-    }
-    mod_lines.push("".to_string());
-
     mod_lines.push("#[macro_use]".to_string());
     mod_lines.push("mod macros;".to_string());
     mod_lines.push("".to_string());
@@ -589,8 +580,8 @@ fn generate_peripheral_file(
     mod_out.writeln("")?;
     mod_out.writeln("use super::*;")?;
     mod_out.writeln(&format!(
-        "pub const BASE: usize = super::{}_BASE;",
-        sanitize_const_name(&p.name)
+        "pub const BASE: usize = 0x{:08X};",
+        p.base_address
     ))?;
     mod_out.writeln("")?;
 
@@ -1471,15 +1462,13 @@ fn generate_peripheral(
     options: PacOptions,
 ) -> Result<()> {
     let mod_name = sanitize_module_name(&p.name);
-    let base_const_root = format!("{}_BASE", sanitize_const_name(&p.name));
 
-    // Generate the module body separately so type definitions (written into `type_defs`)
-    // never end up inside the module by accident.
     let mut mod_out = CodeWriter::new();
-    mod_out.indent(); // everything in this writer is inside `pub mod <name> { ... }`
+    mod_out.indent();
     mod_out.writeln("use super::*;")?;
     mod_out.writeln(&format!(
-        "pub const BASE: usize = super::{base_const_root};"
+        "pub const BASE: usize = 0x{:08X};",
+        p.base_address
     ))?;
     mod_out.writeln("")?;
 
