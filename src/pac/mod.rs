@@ -518,7 +518,6 @@ pub fn generate_device_dir_with_options(
     for p in &periphs {
         let mod_name = sanitize_module_name(&p.name);
         mod_lines.push(format!("pub mod {mod_name};"));
-        mod_lines.push(format!("pub use {mod_name}::*;"));
     }
     mod_lines.push("".to_string());
 
