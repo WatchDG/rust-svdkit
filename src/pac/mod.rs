@@ -613,14 +613,14 @@ fn generate_peripheral_file(
         mod_out.writeln("")?;
     }
 
-    mod_out.writeln("pub mod registers;")?;
-    mod_out.writeln("")?;
-
     if !type_defs.s.trim().is_empty() {
         regs_out.s.push_str(&type_defs.s);
         regs_out.s.push('\n');
         type_defs.s.clear();
     }
+
+    mod_out.writeln("pub mod registers;")?;
+    mod_out.writeln("")?;
 
     mod_out.writeln("#[repr(C)]")?;
     mod_out.writeln("pub struct RegisterBlock {")?;
