@@ -614,7 +614,6 @@ fn generate_peripheral_file(
     }
 
     mod_out.writeln("pub mod registers;")?;
-    mod_out.writeln("pub use self::registers::*;")?;
     mod_out.writeln("")?;
 
     if !type_defs.s.trim().is_empty() {
