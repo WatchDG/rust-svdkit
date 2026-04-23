@@ -78,7 +78,7 @@ impl UartInfo {
         if let Some(ty) = &pac_baudrate_ty {
             s.push_str(&indent_block(
                 &format!(
-                    "pub use super::super::pac::{}::{ty} as {baudrate_alias};\n",
+                    "pub use super::super::pac::{}::enums::{ty} as {baudrate_alias};\n",
                     self.periph_mod
                 ),
                 8,
@@ -95,7 +95,7 @@ impl UartInfo {
             if let Some(ty) = &pac_hwfc_ty {
                 s.push_str(&indent_block(
                     &format!(
-                        "pub use super::super::pac::{}::{ty} as {hwfc_alias};\n",
+                        "pub use super::super::pac::{}::enums::{ty} as {hwfc_alias};\n",
                         self.periph_mod
                     ),
                     8,
@@ -113,7 +113,7 @@ impl UartInfo {
             if let Some(ty) = &pac_parity_ty {
                 s.push_str(&indent_block(
                     &format!(
-                        "pub use super::super::pac::{}::{ty} as {parity_alias};\n",
+                        "pub use super::super::pac::{}::enums::{ty} as {parity_alias};\n",
                         self.periph_mod
                     ),
                     8,

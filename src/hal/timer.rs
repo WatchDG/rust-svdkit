@@ -71,7 +71,7 @@ impl TimerInfo {
         let mode_ty = if let Some(ty) = &pac_mode_ty {
             s.push_str(&indent_block(
                 &format!(
-                    "pub use super::super::pac::{}::{ty} as {mode_alias};\n",
+                    "pub use super::super::pac::{}::enums::{ty} as {mode_alias};\n",
                     self.periph_mod
                 ),
                 8,
@@ -106,7 +106,7 @@ impl TimerInfo {
         let bitmode_ty = if let Some(ty) = &pac_bitmode_ty {
             s.push_str(&indent_block(
                 &format!(
-                    "pub use super::super::pac::{}::{ty} as {bitmode_alias};\n",
+                    "pub use super::super::pac::{}::enums::{ty} as {bitmode_alias};\n",
                     self.periph_mod
                 ),
                 8,

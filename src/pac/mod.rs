@@ -610,7 +610,6 @@ fn generate_peripheral_file(
 
     if has_enums {
         mod_out.writeln("pub mod enums;")?;
-        mod_out.writeln("pub use self::enums::*;")?;
         mod_out.writeln("")?;
     }
 
