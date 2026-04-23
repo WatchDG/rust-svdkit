@@ -1,4 +1,3 @@
-#[macro_export]
 macro_rules! impl_ro_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -10,7 +9,6 @@ macro_rules! impl_ro_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_wo_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -22,7 +20,6 @@ macro_rules! impl_wo_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_rw_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -38,7 +35,6 @@ macro_rules! impl_rw_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_w1s_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -58,7 +54,6 @@ macro_rules! impl_w1s_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_w1c_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -78,7 +73,6 @@ macro_rules! impl_w1c_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_w0s_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -98,7 +92,6 @@ macro_rules! impl_w0s_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_w0c_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -118,7 +111,6 @@ macro_rules! impl_w0c_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_wt_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -138,7 +130,6 @@ macro_rules! impl_wt_register {
     };
 }
 
-#[macro_export]
 macro_rules! define_enum {
     (
         $(#[$doc:meta])*

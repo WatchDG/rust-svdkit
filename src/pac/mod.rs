@@ -57,8 +57,7 @@ pub fn generate_device_dir(device: &svd::Device) -> Result<GeneratedDir> {
 }
 
 pub fn generate_macros_file() -> String {
-    r#"#[macro_export]
-macro_rules! impl_ro_register {
+    r#"macro_rules! impl_ro_register {
     ($name:ident, $ty:ty) => {
         impl $name {
             #[inline(always)]
@@ -69,7 +68,6 @@ macro_rules! impl_ro_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_wo_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -81,7 +79,6 @@ macro_rules! impl_wo_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_rw_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -97,7 +94,6 @@ macro_rules! impl_rw_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_w1s_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -117,7 +113,6 @@ macro_rules! impl_w1s_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_w1c_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -137,7 +132,6 @@ macro_rules! impl_w1c_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_w0s_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -157,7 +151,6 @@ macro_rules! impl_w0s_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_w0c_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -177,7 +170,6 @@ macro_rules! impl_w0c_register {
     };
 }
 
-#[macro_export]
 macro_rules! impl_wt_register {
     ($name:ident, $ty:ty) => {
         impl $name {
@@ -197,7 +189,6 @@ macro_rules! impl_wt_register {
     };
 }
 
-#[macro_export]
 macro_rules! define_enum {
     (
         $(#[$doc:meta])*
@@ -512,7 +503,7 @@ pub fn generate_device_dir_with_options(
     mod_lines.push("".to_string());
 
     mod_lines.push("#[macro_use]".to_string());
-    mod_lines.push("mod macros;".to_string());
+    mod_lines.push("pub mod macros;".to_string());
     mod_lines.push("".to_string());
 
     for p in &periphs {
@@ -570,14 +561,14 @@ fn generate_peripheral_file(
     let mut mod_out = CodeWriter::new();
     let mut regs_out = CodeWriter::new();
 
-    regs_out.writeln("use super::*;")?;
+    regs_out.writeln("use super::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
+    regs_out.writeln("use super::macros::*;")?;
     regs_out.writeln("")?;
 
     mod_out.writeln("#[allow(non_snake_case)]")?;
     mod_out.writeln("#[allow(non_camel_case_types)]")?;
     mod_out.writeln("#[allow(dead_code)]")?;
     mod_out.writeln("")?;
-    mod_out.writeln("use super::*;")?;
     mod_out.writeln(&format!(
         "pub const BASE: usize = 0x{:08X};",
         p.base_address
@@ -619,7 +610,13 @@ fn generate_peripheral_file(
         type_defs.s.clear();
     }
 
+    mod_out.writeln("use core::marker::PhantomData;")?;
+    mod_out.writeln(
+        "use super::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};",
+    )?;
+    mod_out.writeln("use super::macros;")?;
     mod_out.writeln("pub mod registers;")?;
+    mod_out.writeln("use registers::*;")?;
     mod_out.writeln("")?;
 
     mod_out.writeln("#[repr(C)]")?;
@@ -711,7 +708,14 @@ fn generate_peripheral_file_with_enums(
     type_defs: &mut CodeWriter,
     options: PacOptions,
 ) -> Result<(String, String, String)> {
-    generate_peripheral_file(device, p, st, type_defs, options)
+    let (mod_out, regs_out, enums_out) =
+        generate_peripheral_file(device, p, st, type_defs, options)?;
+    let enums_with_import = if enums_out.trim().is_empty() {
+        enums_out
+    } else {
+        enums_out
+    };
+    Ok((mod_out, regs_out, enums_with_import))
 }
 
 /// Generate a single Rust file that represents the whole device.
@@ -1670,7 +1674,7 @@ fn emit_register_field(
     if let Some(dim) = &r.dim {
         if dim.dim_increment == size_bytes {
             out.writeln(&format!(
-                "pub {field_name}: [registers::{reg_ty}; {n} as usize],",
+                "pub {field_name}: [{reg_ty}; {n} as usize],",
                 n = dim.dim
             ))?;
         } else {
@@ -1682,7 +1686,7 @@ fn emit_register_field(
             out.writeln(&format!("pub {field_name}: [u8; {total} as usize],"))?;
         }
     } else {
-        out.writeln(&format!("pub {field_name}: registers::{reg_ty},"))?;
+        out.writeln(&format!("pub {field_name}: {reg_ty},"))?;
     }
     Ok(())
 }
@@ -1702,7 +1706,7 @@ fn emit_cluster_field(
     if let Some(dim) = &c.dim {
         if dim.dim_increment == cluster_size_bytes {
             out.writeln(&format!(
-                "pub {field_name}: [registers::{cluster_ty}; {n} as usize],",
+                "pub {field_name}: [{cluster_ty}; {n} as usize],",
                 n = dim.dim
             ))?;
         } else {
@@ -1714,7 +1718,7 @@ fn emit_cluster_field(
             out.writeln(&format!("pub {field_name}: [u8; {total} as usize],"))?;
         }
     } else {
-        out.writeln(&format!("pub {field_name}: registers::{cluster_ty},"))?;
+        out.writeln(&format!("pub {field_name}: {cluster_ty},"))?;
     }
     Ok(())
 }
