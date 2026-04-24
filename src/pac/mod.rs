@@ -495,6 +495,23 @@ impl<T: Copy> RWOnce<T, Unwritten> {
     .to_string()
 }
 
+pub fn generate_enums_file(device: &svd::Device) -> String {
+    let mut out = String::new();
+    let (_num_irqs, irqs) = collect_device_interrupts(device);
+
+    if !irqs.is_empty() {
+        out.push_str("#[repr(u16)]\n");
+        out.push_str("#[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        out.push_str("pub enum Interrupt {\n");
+        for (n, name, _desc) in &irqs {
+            out.push_str(&format!("    {name} = {n},\n"));
+        }
+        out.push_str("}\n");
+    }
+
+    out
+}
+
 pub fn generate_device_dir_with_options(
     device: &svd::Device,
     options: PacOptions,
@@ -521,6 +538,7 @@ pub fn generate_device_dir_with_options(
     mod_lines.push("use core::marker::PhantomData;".to_string());
     mod_lines.push("pub mod traits;".to_string());
     mod_lines.push("pub mod types;".to_string());
+    mod_lines.push("pub mod enums;".to_string());
     mod_lines.push("use traits::RegValue;".to_string());
     mod_lines.push(
         "use types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};"
@@ -535,24 +553,13 @@ pub fn generate_device_dir_with_options(
     ));
     mod_lines.push("".to_string());
 
-    let (num_irqs, irqs) = collect_device_interrupts(device);
+    let (num_irqs, _irqs) = collect_device_interrupts(device);
     let prio_bits = device
         .cpu
         .as_ref()
         .map(|c| c.nvic_prio_bits)
         .unwrap_or(8)
         .min(8);
-
-    if !irqs.is_empty() {
-        mod_lines.push("#[repr(u16)]".to_string());
-        mod_lines.push("#[derive(Copy, Clone, Debug, PartialEq, Eq)]".to_string());
-        mod_lines.push("pub enum Interrupt {".to_string());
-        for (n, name, _desc) in &irqs {
-            mod_lines.push(format!("    {name} = {n},",));
-        }
-        mod_lines.push("}".to_string());
-        mod_lines.push("".to_string());
-    }
 
     mod_lines.push(format!("pub const _NUM_IRQS: u32 = {num_irqs}u32;"));
     mod_lines.push(format!("pub const _PRIO_BITS: u8 = {prio_bits}u8;"));
@@ -586,6 +593,11 @@ pub fn generate_device_dir_with_options(
     files.push(GeneratedFile {
         file_name: "types.rs".to_string(),
         content: generate_types_file(),
+    });
+
+    files.push(GeneratedFile {
+        file_name: "enums.rs".to_string(),
+        content: generate_enums_file(device),
     });
 
     let mut st = GenState::new();
@@ -832,6 +844,10 @@ pub fn generate_device_rs_with_options(
     out.writeln(&generate_types_file())?;
     out.writeln("}")?;
     out.writeln("")?;
+    out.writeln("pub mod enums {")?;
+    out.writeln(&generate_enums_file(device))?;
+    out.writeln("}")?;
+    out.writeln("")?;
 
     out.writeln(&format!("pub const DEVICE_NAME: &str = {:?};", device.name))?;
     out.writeln(&format!(
@@ -840,7 +856,20 @@ pub fn generate_device_rs_with_options(
     ))?;
     out.writeln("")?;
 
-    emit_nvic(device, &mut out)?;
+    out.writeln(&format!("pub const _NUM_IRQS: u32 = {}u32;", {
+        let (num, _) = collect_device_interrupts(device);
+        num
+    }))?;
+    out.writeln(&format!(
+        "pub const _PRIO_BITS: u8 = {}u8;",
+        device
+            .cpu
+            .as_ref()
+            .map(|c| c.nvic_prio_bits)
+            .unwrap_or(8)
+            .min(8)
+    ))?;
+    out.writeln("")?;
     out.writeln("")?;
 
     // Enumerations for fields with enumeratedValue blocks.
@@ -878,36 +907,6 @@ pub fn generate_device_rs_with_options(
     }
 
     Ok(out.s)
-}
-
-/// Emits `Interrupt` enum into the PAC file.
-/// The `nvic` module is generated separately in `generate_cortex_m_rs`.
-fn emit_nvic(device: &svd::Device, out: &mut CodeWriter) -> Result<()> {
-    let (num_irqs, irqs) = collect_device_interrupts(device);
-
-    let prio_bits = device
-        .cpu
-        .as_ref()
-        .map(|c| c.nvic_prio_bits)
-        .unwrap_or(8)
-        .min(8);
-
-    if !irqs.is_empty() {
-        out.writeln("#[repr(u16)]")?;
-        out.writeln("#[derive(Copy, Clone, Debug, PartialEq, Eq)]")?;
-        out.writeln("pub enum Interrupt {")?;
-        out.indent();
-        for (n, name, _desc) in &irqs {
-            out.writeln(&format!("{name} = {n},"))?;
-        }
-        out.dedent();
-        out.writeln("}")?;
-        out.writeln("")?;
-    }
-
-    out.writeln(&format!("pub const _NUM_IRQS: u32 = {num_irqs}u32;"))?;
-    out.writeln(&format!("pub const _PRIO_BITS: u8 = {prio_bits}u8;"))?;
-    Ok(())
 }
 
 /// Write the generated device file into a directory.
