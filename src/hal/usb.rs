@@ -581,7 +581,7 @@ impl UsbInfo {
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type {usb_ty} = pac::{}::RegisterBlock;\n\n",
+            "        pub type {usb_ty} = pac::peripherals::{}::RegisterBlock;\n\n",
             self.periph_mod,
         ));
 
@@ -720,7 +720,7 @@ impl UsbInfo {
             "            pub unsafe fn steal() -> Usb<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "                Usb {{ usb: &*pac::{}::PTR, _state: PhantomData }}\n",
+            "                Usb {{ usb: &*pac::peripherals::{}::PTR, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("            }\n\n");
@@ -729,7 +729,7 @@ impl UsbInfo {
             "            pub fn usb() -> Usb<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "                Usb {{ usb: unsafe {{ &*pac::{}::PTR }}, _state: PhantomData }}\n",
+            "                Usb {{ usb: unsafe {{ &*pac::peripherals::{}::PTR }}, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("            }\n\n");

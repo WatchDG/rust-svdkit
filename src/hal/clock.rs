@@ -35,7 +35,7 @@ impl ClockInfo {
         s.push_str("        use super::pac;\n\n");
         let type_name = sanitize_type_name(self.hal_mod.as_str());
         s.push_str(&format!(
-            "        pub type {}Register = pac::{}::RegisterBlock;\n\n",
+            "        pub type {}Register = pac::peripherals::{}::RegisterBlock;\n\n",
             type_name, self.periph_mod,
         ));
 
@@ -126,7 +126,7 @@ impl ClockInfo {
             "            pub unsafe fn steal() -> Clock<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "                Clock {{ c: &*pac::{}::PTR, _state: PhantomData }}\n",
+            "                Clock {{ c: &*pac::peripherals::{}::PTR, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("            }\n\n");
@@ -135,7 +135,7 @@ impl ClockInfo {
             "            pub fn clock() -> Clock<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "                Clock {{ c: unsafe {{ &*pac::{}::PTR }}, _state: PhantomData }}\n",
+            "                Clock {{ c: unsafe {{ &*pac::peripherals::{}::PTR }}, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("            }\n\n");

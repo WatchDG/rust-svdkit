@@ -563,10 +563,7 @@ pub fn generate_device_dir_with_options(
     mod_lines.push("pub mod macros;".to_string());
     mod_lines.push("".to_string());
 
-    for p in &periphs {
-        let mod_name = sanitize_module_name(&p.name);
-        mod_lines.push(format!("pub mod {mod_name};"));
-    }
+    mod_lines.push("pub mod peripherals;".to_string());
     mod_lines.push("".to_string());
 
     files.push(GeneratedFile {
@@ -599,6 +596,24 @@ pub fn generate_device_dir_with_options(
         content: generate_constants_file(device),
     });
 
+    files.push(GeneratedFile {
+        file_name: "peripherals/mod.rs".to_string(),
+        content: {
+            let mut lines = Vec::new();
+            lines.push("#[allow(non_snake_case)]".to_string());
+            lines.push("#[allow(non_camel_case_types)]".to_string());
+            lines.push("#[allow(dead_code)]".to_string());
+            lines.push("#[allow(unused_imports)]".to_string());
+            lines.push("#[allow(unsafe_op_in_unsafe_fn)]".to_string());
+            lines.push("".to_string());
+            for p in &periphs {
+                let mod_name = sanitize_module_name(&p.name);
+                lines.push(format!("pub mod {mod_name};"));
+            }
+            lines.join("\n")
+        },
+    });
+
     let mut st = GenState::new();
     let mut type_defs = CodeWriter::new();
 
@@ -607,16 +622,16 @@ pub fn generate_device_dir_with_options(
             generate_peripheral_file_with_enums(device, p, &mut st, &mut type_defs, options)?;
         let mod_name = sanitize_module_name(&p.name);
         files.push(GeneratedFile {
-            file_name: format!("{}/mod.rs", mod_name),
+            file_name: format!("peripherals/{}/mod.rs", mod_name),
             content: mod_content,
         });
         files.push(GeneratedFile {
-            file_name: format!("{}/registers.rs", mod_name),
+            file_name: format!("peripherals/{}/registers.rs", mod_name),
             content: regs_content,
         });
         if !enums_content.is_empty() {
             files.push(GeneratedFile {
-                file_name: format!("{}/enums.rs", mod_name),
+                file_name: format!("peripherals/{}/enums.rs", mod_name),
                 content: enums_content,
             });
         }
@@ -638,8 +653,8 @@ fn generate_peripheral_file(
     let mut mod_out = CodeWriter::new();
     let mut regs_out = CodeWriter::new();
 
-    regs_out.writeln("use super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
-    regs_out.writeln("use super::macros::*;")?;
+    regs_out.writeln("use super::super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
+    regs_out.writeln("use super::super::super::macros::*;")?;
     regs_out.writeln("")?;
 
     mod_out.writeln("#[allow(non_snake_case)]")?;
@@ -688,8 +703,8 @@ fn generate_peripheral_file(
     }
 
     mod_out.writeln("use core::marker::PhantomData;")?;
-    mod_out.writeln("use super::macros;")?;
-    mod_out.writeln("use super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
+    mod_out.writeln("use super::super::macros;")?;
+    mod_out.writeln("use super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
     mod_out.writeln("pub mod registers;")?;
     mod_out.writeln("use registers::*;")?;
     mod_out.writeln("")?;

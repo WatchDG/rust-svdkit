@@ -52,6 +52,7 @@ fn golden_nrf52840_pac_p0_registers_snapshot() {
         .join("snapshots")
         .join("nrf52840")
         .join("pac")
+        .join("peripherals")
         .join("p0")
         .join("registers.rs");
 
@@ -61,8 +62,8 @@ fn golden_nrf52840_pac_p0_registers_snapshot() {
     let generated_registers = gen_dir
         .files
         .iter()
-        .find(|f| f.file_name == "p0/registers.rs")
-        .expect("p0/registers.rs not found in generated files")
+        .find(|f| f.file_name == "peripherals/p0/registers.rs")
+        .expect("peripherals/p0/registers.rs not found in generated files")
         .content
         .clone();
 

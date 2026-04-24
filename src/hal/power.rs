@@ -36,7 +36,7 @@ impl PowerInfo {
         s.push_str("        use super::pac;\n\n");
         let type_name = gpio::sanitize_type_name(self.hal_mod.as_str());
         s.push_str(&format!(
-            "        pub type {}Register = pac::{}::RegisterBlock;\n\n",
+            "        pub type {}Register = pac::peripherals::{}::RegisterBlock;\n\n",
             type_name, self.periph_mod,
         ));
 
@@ -118,7 +118,7 @@ impl PowerInfo {
             "            pub unsafe fn steal() -> Power<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "                Power {{ power: &*pac::{}::PTR, _state: PhantomData }}\n",
+            "                Power {{ power: &*pac::peripherals::{}::PTR, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("            }\n\n");
@@ -127,7 +127,7 @@ impl PowerInfo {
             "            pub fn power() -> Power<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "                Power {{ power: unsafe {{ &*pac::{}::PTR }}, _state: PhantomData }}\n",
+            "                Power {{ power: unsafe {{ &*pac::peripherals::{}::PTR }}, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("            }\n\n");

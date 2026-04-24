@@ -22,7 +22,7 @@ impl GpioPortInfo {
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type {port_ty} = pac::{}::RegisterBlock;\n\n",
+            "        pub type {port_ty} = pac::peripherals::{}::RegisterBlock;\n\n",
             self.periph_mod,
         ));
         s.push_str("        use core::marker::PhantomData;\n\n");
@@ -42,7 +42,10 @@ impl GpioPortInfo {
         s.push_str(&format!(
             "        pub unsafe fn steal() -> &'static {port_ty} {{\n"
         ));
-        s.push_str(&format!("            &*pac::{}::PTR\n", self.periph_mod));
+        s.push_str(&format!(
+            "            &*pac::peripherals::{}::PTR\n",
+            self.periph_mod
+        ));
         s.push_str("        }\n\n");
 
         let field_enums = [
@@ -67,7 +70,7 @@ impl GpioPortInfo {
                 pac_enum_type_name_for_field(&self.periph_name, &self.pin_cnf_reg_path, f);
             if let Some(ty) = &pac_enum_ty {
                 s.push_str(&format!(
-                    "        pub use super::super::pac::{}::enums::{} as {};\n",
+                    "        pub use super::super::pac::peripherals::{}::enums::{} as {};\n",
                     self.periph_mod, ty, alias
                 ));
                 generated_any = true;
@@ -131,7 +134,7 @@ impl GpioPortInfo {
             "        pub unsafe fn pin(pin: u8) -> Pin<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "            Pin {{ port: &*pac::{}::PTR, pin, _state: PhantomData }}\n",
+            "            Pin {{ port: &*pac::peripherals::{}::PTR, pin, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("        }\n\n");
@@ -281,7 +284,7 @@ impl GpioPortInfo {
 
         if let Some(ref level_enum) = self.level_enum_name {
             s.push_str("            #[inline(always)]\n");
-            s.push_str(&format!("            pub fn set_level(&self, level: super::super::pac::{}::enums::{level_enum}) {{\n", self.periph_mod));
+            s.push_str(&format!("            pub fn set_level(&self, level: super::super::pac::peripherals::{}::enums::{level_enum}) {{\n", self.periph_mod));
             s.push_str(&format!(
                 "                let mask = 1u32 << (self.pin as u32);\n"
             ));
@@ -298,7 +301,7 @@ impl GpioPortInfo {
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn set_high(&self) {\n");
             s.push_str(&format!(
-                "                self.set_level(super::super::pac::{}::enums::{level_enum}::High);\n",
+                "                self.set_level(super::super::pac::peripherals::{}::enums::{level_enum}::High);\n",
                 self.periph_mod
             ));
             s.push_str("            }\n\n");
@@ -306,7 +309,7 @@ impl GpioPortInfo {
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn set_low(&self) {\n");
             s.push_str(&format!(
-                "                self.set_level(super::super::pac::{}::enums::{level_enum}::Low);\n",
+                "                self.set_level(super::super::pac::peripherals::{}::enums::{level_enum}::Low);\n",
                 self.periph_mod
             ));
             s.push_str("            }\n");

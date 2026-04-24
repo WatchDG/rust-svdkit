@@ -38,7 +38,7 @@ impl UartInfo {
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type {uart_ty} = pac::{}::RegisterBlock;\n\n",
+            "        pub type {uart_ty} = pac::peripherals::{}::RegisterBlock;\n\n",
             self.periph_mod,
         ));
 
@@ -60,14 +60,17 @@ impl UartInfo {
         s.push_str(&format!(
             "        pub unsafe fn steal() -> &'static {uart_ty} {{\n"
         ));
-        s.push_str(&format!("            &*pac::{}::PTR\n", self.periph_mod));
+        s.push_str(&format!(
+            "            &*pac::peripherals::{}::PTR\n",
+            self.periph_mod
+        ));
         s.push_str("        }\n\n");
 
         s.push_str(&format!(
             "        pub fn uart() -> Uart<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "            Uart {{ u: unsafe {{ &*pac::{}::PTR }}, _state: PhantomData }}\n",
+            "            Uart {{ u: unsafe {{ &*pac::peripherals::{}::PTR }}, _state: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("        }\n\n");
@@ -78,7 +81,7 @@ impl UartInfo {
         if let Some(ty) = &pac_baudrate_ty {
             s.push_str(&indent_block(
                 &format!(
-                    "pub use super::super::pac::{}::enums::{ty} as {baudrate_alias};\n",
+                    "pub use super::super::pac::peripherals::{}::enums::{ty} as {baudrate_alias};\n",
                     self.periph_mod
                 ),
                 8,
@@ -95,7 +98,7 @@ impl UartInfo {
             if let Some(ty) = &pac_hwfc_ty {
                 s.push_str(&indent_block(
                     &format!(
-                        "pub use super::super::pac::{}::enums::{ty} as {hwfc_alias};\n",
+                        "pub use super::super::pac::peripherals::{}::enums::{ty} as {hwfc_alias};\n",
                         self.periph_mod
                     ),
                     8,
@@ -113,7 +116,7 @@ impl UartInfo {
             if let Some(ty) = &pac_parity_ty {
                 s.push_str(&indent_block(
                     &format!(
-                        "pub use super::super::pac::{}::enums::{ty} as {parity_alias};\n",
+                        "pub use super::super::pac::peripherals::{}::enums::{ty} as {parity_alias};\n",
                         self.periph_mod
                     ),
                     8,

@@ -33,7 +33,7 @@ impl TimerInfo {
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type {timer_ty} = pac::{}::RegisterBlock;\n\n",
+            "        pub type {timer_ty} = pac::peripherals::{}::RegisterBlock;\n\n",
             self.periph_mod,
         ));
 
@@ -47,14 +47,17 @@ impl TimerInfo {
         s.push_str(&format!(
             "        pub unsafe fn steal() -> &'static {timer_ty} {{\n"
         ));
-        s.push_str(&format!("            &*pac::{}::PTR\n", self.periph_mod));
+        s.push_str(&format!(
+            "            &*pac::peripherals::{}::PTR\n",
+            self.periph_mod
+        ));
         s.push_str("        }\n\n");
 
         s.push_str(&format!(
             "        pub fn timer() -> Timer<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "            Timer {{ t: unsafe {{ &*pac::{}::PTR }}, _mode: PhantomData }}\n",
+            "            Timer {{ t: unsafe {{ &*pac::peripherals::{}::PTR }}, _mode: PhantomData }}\n",
             self.periph_mod
         ));
         s.push_str("        }\n\n");
@@ -71,7 +74,7 @@ impl TimerInfo {
         let mode_ty = if let Some(ty) = &pac_mode_ty {
             s.push_str(&indent_block(
                 &format!(
-                    "pub use super::super::pac::{}::enums::{ty} as {mode_alias};\n",
+                    "pub use super::super::pac::peripherals::{}::enums::{ty} as {mode_alias};\n",
                     self.periph_mod
                 ),
                 8,
@@ -106,7 +109,7 @@ impl TimerInfo {
         let bitmode_ty = if let Some(ty) = &pac_bitmode_ty {
             s.push_str(&indent_block(
                 &format!(
-                    "pub use super::super::pac::{}::enums::{ty} as {bitmode_alias};\n",
+                    "pub use super::super::pac::peripherals::{}::enums::{ty} as {bitmode_alias};\n",
                     self.periph_mod
                 ),
                 8,
