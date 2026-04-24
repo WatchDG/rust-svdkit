@@ -11,7 +11,7 @@ description: "Перегенерирует пакеты (nrf52840) и запус
 
 1. **Перегенерация пакетов**: Для каждого пакета запустить:
    ```bash
-   cargo run --bin svd2rs -- --svd_file svds/<package>.svd --out_dir generated/<package>
+   cargo run --bin svd2rs -- --svd_file tests/svds/<package>.svd --out_dir generated/<package>
    ```
 
    Список пакетов:
