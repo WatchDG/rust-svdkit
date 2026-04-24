@@ -638,7 +638,7 @@ fn generate_peripheral_file(
     let mut mod_out = CodeWriter::new();
     let mut regs_out = CodeWriter::new();
 
-    regs_out.writeln("use super::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
+    regs_out.writeln("use super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
     regs_out.writeln("use super::macros::*;")?;
     regs_out.writeln("")?;
 
@@ -688,10 +688,8 @@ fn generate_peripheral_file(
     }
 
     mod_out.writeln("use core::marker::PhantomData;")?;
-    mod_out.writeln(
-        "use super::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};",
-    )?;
     mod_out.writeln("use super::macros;")?;
+    mod_out.writeln("use super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
     mod_out.writeln("pub mod registers;")?;
     mod_out.writeln("use registers::*;")?;
     mod_out.writeln("")?;
