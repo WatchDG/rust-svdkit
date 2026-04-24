@@ -512,6 +512,21 @@ pub fn generate_enums_file(device: &svd::Device) -> String {
     out
 }
 
+pub fn generate_constants_file(device: &svd::Device) -> String {
+    let (num_irqs, _) = collect_device_interrupts(device);
+    let prio_bits = device
+        .cpu
+        .as_ref()
+        .map(|c| c.nvic_prio_bits)
+        .unwrap_or(8)
+        .min(8);
+
+    format!(
+        "pub const DEVICE_NAME: &str = {:?};\npub const DEVICE_DESCRIPTION: &str = {:?};\n\npub const _NUM_IRQS: u32 = {num_irqs}u32;\npub const _PRIO_BITS: u8 = {prio_bits}u8;\n",
+        device.name, device.description
+    )
+}
+
 pub fn generate_device_dir_with_options(
     device: &svd::Device,
     options: PacOptions,
@@ -539,30 +554,12 @@ pub fn generate_device_dir_with_options(
     mod_lines.push("pub mod traits;".to_string());
     mod_lines.push("pub mod types;".to_string());
     mod_lines.push("pub mod enums;".to_string());
+    mod_lines.push("pub mod constants;".to_string());
     mod_lines.push("use traits::RegValue;".to_string());
     mod_lines.push(
         "use types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};"
             .to_string(),
     );
-    mod_lines.push("".to_string());
-
-    mod_lines.push(format!("pub const DEVICE_NAME: &str = {:?};", device.name));
-    mod_lines.push(format!(
-        "pub const DEVICE_DESCRIPTION: &str = {:?};",
-        device.description
-    ));
-    mod_lines.push("".to_string());
-
-    let (num_irqs, _irqs) = collect_device_interrupts(device);
-    let prio_bits = device
-        .cpu
-        .as_ref()
-        .map(|c| c.nvic_prio_bits)
-        .unwrap_or(8)
-        .min(8);
-
-    mod_lines.push(format!("pub const _NUM_IRQS: u32 = {num_irqs}u32;"));
-    mod_lines.push(format!("pub const _PRIO_BITS: u8 = {prio_bits}u8;"));
     mod_lines.push("".to_string());
 
     mod_lines.push("#[macro_use]".to_string());
@@ -598,6 +595,11 @@ pub fn generate_device_dir_with_options(
     files.push(GeneratedFile {
         file_name: "enums.rs".to_string(),
         content: generate_enums_file(device),
+    });
+
+    files.push(GeneratedFile {
+        file_name: "constants.rs".to_string(),
+        content: generate_constants_file(device),
     });
 
     let mut st = GenState::new();
@@ -848,28 +850,9 @@ pub fn generate_device_rs_with_options(
     out.writeln(&generate_enums_file(device))?;
     out.writeln("}")?;
     out.writeln("")?;
-
-    out.writeln(&format!("pub const DEVICE_NAME: &str = {:?};", device.name))?;
-    out.writeln(&format!(
-        "pub const DEVICE_DESCRIPTION: &str = {:?};",
-        device.description
-    ))?;
-    out.writeln("")?;
-
-    out.writeln(&format!("pub const _NUM_IRQS: u32 = {}u32;", {
-        let (num, _) = collect_device_interrupts(device);
-        num
-    }))?;
-    out.writeln(&format!(
-        "pub const _PRIO_BITS: u8 = {}u8;",
-        device
-            .cpu
-            .as_ref()
-            .map(|c| c.nvic_prio_bits)
-            .unwrap_or(8)
-            .min(8)
-    ))?;
-    out.writeln("")?;
+    out.writeln("pub mod constants {")?;
+    out.writeln(&generate_constants_file(device))?;
+    out.writeln("}")?;
     out.writeln("")?;
 
     // Enumerations for fields with enumeratedValue blocks.
