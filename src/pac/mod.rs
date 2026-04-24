@@ -245,6 +245,53 @@ macro_rules! define_enum {
     .to_string()
 }
 
+pub fn generate_traits_file() -> String {
+    r#"pub trait RegValue: Copy {
+    const BITS: u32;
+    const MASK: u64;
+    fn to_u64(self) -> u64;
+    fn from_u64(v: u64) -> Self;
+}
+
+impl RegValue for u8 {
+    const BITS: u32 = 8;
+    const MASK: u64 = 0xFFu64;
+    #[inline(always)]
+    fn to_u64(self) -> u64 { self as u64 }
+    #[inline(always)]
+    fn from_u64(v: u64) -> Self { v as u8 }
+}
+
+impl RegValue for u16 {
+    const BITS: u32 = 16;
+    const MASK: u64 = 0xFFFFu64;
+    #[inline(always)]
+    fn to_u64(self) -> u64 { self as u64 }
+    #[inline(always)]
+    fn from_u64(v: u64) -> Self { v as u16 }
+}
+
+impl RegValue for u32 {
+    const BITS: u32 = 32;
+    const MASK: u64 = 0xFFFF_FFFFu64;
+    #[inline(always)]
+    fn to_u64(self) -> u64 { self as u64 }
+    #[inline(always)]
+    fn from_u64(v: u64) -> Self { v as u32 }
+}
+
+impl RegValue for u64 {
+    const BITS: u32 = 64;
+    const MASK: u64 = 0xFFFF_FFFF_FFFF_FFFFu64;
+    #[inline(always)]
+    fn to_u64(self) -> u64 { self as u64 }
+    #[inline(always)]
+    fn from_u64(v: u64) -> Self { v as u64 }
+}
+"#
+    .to_string()
+}
+
 pub fn generate_device_dir_with_options(
     device: &svd::Device,
     options: PacOptions,
@@ -269,32 +316,9 @@ pub fn generate_device_dir_with_options(
 
     mod_lines.push("use core::cell::UnsafeCell;".to_string());
     mod_lines.push("use core::marker::PhantomData;".to_string());
+    mod_lines.push("pub mod traits;".to_string());
+    mod_lines.push("use traits::RegValue;".to_string());
     mod_lines.push("".to_string());
-
-    mod_lines.push("pub trait RegValue: Copy {".to_string());
-    mod_lines.push("    const BITS: u32;".to_string());
-    mod_lines.push("    const MASK: u64;".to_string());
-    mod_lines.push("    fn to_u64(self) -> u64;".to_string());
-    mod_lines.push("    fn from_u64(v: u64) -> Self;".to_string());
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    for (ty, bits, mask) in [
-        ("u8", "8", "0xFFu64"),
-        ("u16", "16", "0xFFFFu64"),
-        ("u32", "32", "0xFFFF_FFFFu64"),
-        ("u64", "64", "0xFFFF_FFFF_FFFF_FFFFu64"),
-    ] {
-        mod_lines.push(format!("impl RegValue for {ty} {{",));
-        mod_lines.push(format!("    const BITS: u32 = {bits};",));
-        mod_lines.push(format!("    const MASK: u64 = {mask};",));
-        mod_lines.push("    #[inline(always)]".to_string());
-        mod_lines.push("    fn to_u64(self) -> u64 { self as u64 }".to_string());
-        mod_lines.push("    #[inline(always)]".to_string());
-        mod_lines.push(format!("    fn from_u64(v: u64) -> Self {{ v as {ty} }}",));
-        mod_lines.push("}".to_string());
-        mod_lines.push("".to_string());
-    }
 
     for (name, ty) in [
         ("RO", "pub struct RO<T>(UnsafeCell<T>);"),
@@ -520,6 +544,11 @@ pub fn generate_device_dir_with_options(
     files.push(GeneratedFile {
         file_name: "macros.rs".to_string(),
         content: generate_macros_file(),
+    });
+
+    files.push(GeneratedFile {
+        file_name: "traits.rs".to_string(),
+        content: generate_traits_file(),
     });
 
     let mut st = GenState::new();
@@ -758,54 +787,8 @@ pub fn generate_device_rs_with_options(
     out.writeln("use core::cell::UnsafeCell;")?;
     out.writeln("use core::marker::PhantomData;")?;
     out.writeln("")?;
-    out.writeln("pub trait RegValue: Copy {")?;
-    out.indent();
-    out.writeln("const BITS: u32;")?;
-    out.writeln("const MASK: u64;")?;
-    out.writeln("fn to_u64(self) -> u64;")?;
-    out.writeln("fn from_u64(v: u64) -> Self;")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl RegValue for u8 {")?;
-    out.indent();
-    out.writeln("const BITS: u32 = 8;")?;
-    out.writeln("const MASK: u64 = 0xFFu64;")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("fn to_u64(self) -> u64 { self as u64 }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("fn from_u64(v: u64) -> Self { v as u8 }")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("impl RegValue for u16 {")?;
-    out.indent();
-    out.writeln("const BITS: u32 = 16;")?;
-    out.writeln("const MASK: u64 = 0xFFFFu64;")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("fn to_u64(self) -> u64 { self as u64 }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("fn from_u64(v: u64) -> Self { v as u16 }")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("impl RegValue for u32 {")?;
-    out.indent();
-    out.writeln("const BITS: u32 = 32;")?;
-    out.writeln("const MASK: u64 = 0xFFFF_FFFFu64;")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("fn to_u64(self) -> u64 { self as u64 }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("fn from_u64(v: u64) -> Self { v as u32 }")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("impl RegValue for u64 {")?;
-    out.indent();
-    out.writeln("const BITS: u32 = 64;")?;
-    out.writeln("const MASK: u64 = 0xFFFF_FFFF_FFFF_FFFFu64;")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("fn to_u64(self) -> u64 { self }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("fn from_u64(v: u64) -> Self { v }")?;
-    out.dedent();
+    out.writeln("pub mod traits {")?;
+    out.writeln(&generate_traits_file())?;
     out.writeln("}")?;
     out.writeln("")?;
     out.writeln("#[repr(transparent)]")?;
@@ -869,7 +852,7 @@ pub fn generate_device_rs_with_options(
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("impl<T: RegValue> W1S<T> {")?;
+    out.writeln("impl<T: traits::RegValue> W1S<T> {")?;
     out.indent();
     out.writeln("#[inline(always)]")?;
     out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
@@ -882,7 +865,7 @@ pub fn generate_device_rs_with_options(
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("impl<T: RegValue> W1C<T> {")?;
+    out.writeln("impl<T: traits::RegValue> W1C<T> {")?;
     out.indent();
     out.writeln("#[inline(always)]")?;
     out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
@@ -895,7 +878,7 @@ pub fn generate_device_rs_with_options(
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("impl<T: RegValue> W0S<T> {")?;
+    out.writeln("impl<T: traits::RegValue> W0S<T> {")?;
     out.indent();
     out.writeln("#[inline(always)]")?;
     out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
@@ -914,7 +897,7 @@ pub fn generate_device_rs_with_options(
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("impl<T: RegValue> W0C<T> {")?;
+    out.writeln("impl<T: traits::RegValue> W0C<T> {")?;
     out.indent();
     out.writeln("#[inline(always)]")?;
     out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
@@ -933,7 +916,7 @@ pub fn generate_device_rs_with_options(
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("impl<T: RegValue> WT<T> {")?;
+    out.writeln("impl<T: traits::RegValue> WT<T> {")?;
     out.indent();
     out.writeln("#[inline(always)]")?;
     out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
