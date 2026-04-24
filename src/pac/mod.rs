@@ -292,6 +292,209 @@ impl RegValue for u64 {
     .to_string()
 }
 
+pub fn generate_types_file() -> String {
+    r#"use core::marker::PhantomData;
+use super::traits::RegValue;
+
+#[repr(transparent)]
+pub struct RO<T>(core::cell::UnsafeCell<T>);
+
+#[repr(transparent)]
+pub struct WO<T>(core::cell::UnsafeCell<T>);
+
+#[repr(transparent)]
+pub struct RW<T>(core::cell::UnsafeCell<T>);
+
+#[repr(transparent)]
+pub struct W1S<T>(core::cell::UnsafeCell<T>);
+
+#[repr(transparent)]
+pub struct W1C<T>(core::cell::UnsafeCell<T>);
+
+#[repr(transparent)]
+pub struct W0S<T>(core::cell::UnsafeCell<T>);
+
+#[repr(transparent)]
+pub struct W0C<T>(core::cell::UnsafeCell<T>);
+
+#[repr(transparent)]
+pub struct WT<T>(core::cell::UnsafeCell<T>);
+
+unsafe impl<T> Send for RO<T> {}
+unsafe impl<T> Sync for RO<T> {}
+unsafe impl<T> Send for WO<T> {}
+unsafe impl<T> Sync for WO<T> {}
+unsafe impl<T> Send for RW<T> {}
+unsafe impl<T> Sync for RW<T> {}
+unsafe impl<T> Send for W1S<T> {}
+unsafe impl<T> Sync for W1S<T> {}
+unsafe impl<T> Send for W1C<T> {}
+unsafe impl<T> Sync for W1C<T> {}
+unsafe impl<T> Send for W0S<T> {}
+unsafe impl<T> Sync for W0S<T> {}
+unsafe impl<T> Send for W0C<T> {}
+unsafe impl<T> Sync for W0C<T> {}
+unsafe impl<T> Send for WT<T> {}
+unsafe impl<T> Sync for WT<T> {}
+
+impl<T: Copy> RO<T> {
+    #[inline(always)]
+    pub fn read(&self) -> T {
+        unsafe { core::ptr::read_volatile(self.0.get()) }
+    }
+}
+
+impl<T: Copy> WO<T> {
+    #[inline(always)]
+    pub fn write(&self, v: T) {
+        unsafe { core::ptr::write_volatile(self.0.get(), v) }
+    }
+}
+
+impl<T: Copy> RW<T> {
+    #[inline(always)]
+    pub fn read(&self) -> T {
+        unsafe { core::ptr::read_volatile(self.0.get()) }
+    }
+    #[inline(always)]
+    pub fn write(&self, v: T) {
+        unsafe { core::ptr::write_volatile(self.0.get(), v) }
+    }
+}
+
+impl<T: RegValue> W1S<T> {
+    #[inline(always)]
+    pub fn read(&self) -> T {
+        unsafe { core::ptr::read_volatile(self.0.get()) }
+    }
+    #[inline(always)]
+    pub fn write(&self, v: T) {
+        unsafe { core::ptr::write_volatile(self.0.get(), v) }
+    }
+    #[inline(always)]
+    pub fn set_bits(&self, mask: T) {
+        self.write(mask)
+    }
+}
+
+impl<T: RegValue> W1C<T> {
+    #[inline(always)]
+    pub fn read(&self) -> T {
+        unsafe { core::ptr::read_volatile(self.0.get()) }
+    }
+    #[inline(always)]
+    pub fn write(&self, v: T) {
+        unsafe { core::ptr::write_volatile(self.0.get(), v) }
+    }
+    #[inline(always)]
+    pub fn clear_bits(&self, mask: T) {
+        self.write(mask)
+    }
+}
+
+impl<T: RegValue> W0S<T> {
+    #[inline(always)]
+    pub fn read(&self) -> T {
+        unsafe { core::ptr::read_volatile(self.0.get()) }
+    }
+    #[inline(always)]
+    pub fn write(&self, v: T) {
+        unsafe { core::ptr::write_volatile(self.0.get(), v) }
+    }
+    #[inline(always)]
+    pub fn set_bits(&self, mask: T) {
+        let m = mask.to_u64() & T::MASK;
+        let v = (!m) & T::MASK;
+        self.write(T::from_u64(v));
+    }
+}
+
+impl<T: RegValue> W0C<T> {
+    #[inline(always)]
+    pub fn read(&self) -> T {
+        unsafe { core::ptr::read_volatile(self.0.get()) }
+    }
+    #[inline(always)]
+    pub fn write(&self, v: T) {
+        unsafe { core::ptr::write_volatile(self.0.get(), v) }
+    }
+    #[inline(always)]
+    pub fn clear_bits(&self, mask: T) {
+        let m = mask.to_u64() & T::MASK;
+        let v = (!m) & T::MASK;
+        self.write(T::from_u64(v));
+    }
+}
+
+impl<T: RegValue> WT<T> {
+    #[inline(always)]
+    pub fn read(&self) -> T {
+        unsafe { core::ptr::read_volatile(self.0.get()) }
+    }
+    #[inline(always)]
+    pub fn write(&self, v: T) {
+        unsafe { core::ptr::write_volatile(self.0.get(), v) }
+    }
+    #[inline(always)]
+    pub fn toggle_bits(&self, mask: T) {
+        self.write(mask)
+    }
+}
+
+pub struct Unwritten;
+pub struct Written;
+pub struct WOOnce<T, S> {
+    pub base: usize,
+    pub offset: usize,
+    pub _state: PhantomData<S>,
+    pub _t: PhantomData<T>,
+}
+pub struct RWOnce<T, S> {
+    pub base: usize,
+    pub offset: usize,
+    pub _state: PhantomData<S>,
+    pub _t: PhantomData<T>,
+}
+
+impl<T: Copy, S> RWOnce<T, S> {
+    #[inline(always)]
+    pub unsafe fn read(&self) -> T {
+        let p = (self.base + self.offset) as *const RW<T>;
+        (*p).read()
+    }
+}
+
+impl<T: Copy> WOOnce<T, Unwritten> {
+    #[inline(always)]
+    pub unsafe fn write(self, v: T) -> WOOnce<T, Written> {
+        let p = (self.base + self.offset) as *const WO<T>;
+        (*p).write(v);
+        WOOnce {
+            base: self.base,
+            offset: self.offset,
+            _state: PhantomData,
+            _t: PhantomData,
+        }
+    }
+}
+
+impl<T: Copy> RWOnce<T, Unwritten> {
+    #[inline(always)]
+    pub unsafe fn write(self, v: T) -> RWOnce<T, Written> {
+        let p = (self.base + self.offset) as *const RW<T>;
+        (*p).write(v);
+        RWOnce {
+            base: self.base,
+            offset: self.offset,
+            _state: PhantomData,
+            _t: PhantomData,
+        }
+    }
+}
+"#
+    .to_string()
+}
+
 pub fn generate_device_dir_with_options(
     device: &svd::Device,
     options: PacOptions,
@@ -317,183 +520,12 @@ pub fn generate_device_dir_with_options(
     mod_lines.push("use core::cell::UnsafeCell;".to_string());
     mod_lines.push("use core::marker::PhantomData;".to_string());
     mod_lines.push("pub mod traits;".to_string());
+    mod_lines.push("pub mod types;".to_string());
     mod_lines.push("use traits::RegValue;".to_string());
-    mod_lines.push("".to_string());
-
-    for (name, ty) in [
-        ("RO", "pub struct RO<T>(UnsafeCell<T>);"),
-        ("WO", "pub struct WO<T>(UnsafeCell<T>);"),
-        ("RW", "pub struct RW<T>(UnsafeCell<T>);"),
-        ("W1S", "pub struct W1S<T>(UnsafeCell<T>);"),
-        ("W1C", "pub struct W1C<T>(UnsafeCell<T>);"),
-        ("W0S", "pub struct W0S<T>(UnsafeCell<T>);"),
-        ("W0C", "pub struct W0C<T>(UnsafeCell<T>);"),
-        ("WT", "pub struct WT<T>(UnsafeCell<T>);"),
-    ] {
-        mod_lines.push("#[repr(transparent)]".to_string());
-        mod_lines.push(format!("{ty}",));
-        mod_lines.push("".to_string());
-    }
-
-    for name in ["RO", "WO", "RW", "W1S", "W1C", "W0S", "W0C", "WT"] {
-        mod_lines.push(format!("unsafe impl<T> Send for {name}<T> {{}}"));
-        mod_lines.push(format!("unsafe impl<T> Sync for {name}<T> {{}}"));
-    }
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: Copy> RO<T> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
     mod_lines.push(
-        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
+        "use types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};"
             .to_string(),
     );
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: Copy> WO<T> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
-            .to_string(),
-    );
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: Copy> RW<T> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
-            .to_string(),
-    );
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: RegValue> W1S<T> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push("    pub fn set_bits(&self, mask: T) { self.write(mask) }".to_string());
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: RegValue> W1C<T> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push("    pub fn clear_bits(&self, mask: T) { self.write(mask) }".to_string());
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: RegValue> W0S<T> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push("    pub fn set_bits(&self, mask: T) {".to_string());
-    mod_lines.push("        let m = mask.to_u64() & T::MASK;".to_string());
-    mod_lines.push("        let v = (!m) & T::MASK;".to_string());
-    mod_lines.push("        self.write(T::from_u64(v));".to_string());
-    mod_lines.push("    }".to_string());
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: RegValue> W0C<T> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push("    pub fn clear_bits(&self, mask: T) {".to_string());
-    mod_lines.push("        let m = mask.to_u64() & T::MASK;".to_string());
-    mod_lines.push("        let v = (!m) & T::MASK;".to_string());
-    mod_lines.push("        self.write(T::from_u64(v));".to_string());
-    mod_lines.push("    }".to_string());
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: RegValue> WT<T> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push(
-        "    pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }"
-            .to_string(),
-    );
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push("    pub fn toggle_bits(&self, mask: T) { self.write(mask) }".to_string());
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("pub struct Unwritten;".to_string());
-    mod_lines.push("pub struct Written;".to_string());
-    mod_lines.push("pub struct WOOnce<T, S> { base: usize, offset: usize, _state: PhantomData<S>, _t: PhantomData<T> }".to_string());
-    mod_lines.push("pub struct RWOnce<T, S> { base: usize, offset: usize, _state: PhantomData<S>, _t: PhantomData<T> }".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: Copy, S> RWOnce<T, S> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push("    pub unsafe fn read(&self) -> T {".to_string());
-    mod_lines.push("        let p = (self.base + self.offset) as *const RW<T>;".to_string());
-    mod_lines.push("        (*p).read()".to_string());
-    mod_lines.push("    }".to_string());
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: Copy> WOOnce<T, Unwritten> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push("    pub unsafe fn write(self, v: T) -> WOOnce<T, Written> {".to_string());
-    mod_lines.push("        let p = (self.base + self.offset) as *const WO<T>;".to_string());
-    mod_lines.push("        (*p).write(v);".to_string());
-    mod_lines.push("        WOOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }".to_string());
-    mod_lines.push("    }".to_string());
-    mod_lines.push("}".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("impl<T: Copy> RWOnce<T, Unwritten> {".to_string());
-    mod_lines.push("    #[inline(always)]".to_string());
-    mod_lines.push("    pub unsafe fn write(self, v: T) -> RWOnce<T, Written> {".to_string());
-    mod_lines.push("        let p = (self.base + self.offset) as *const RW<T>;".to_string());
-    mod_lines.push("        (*p).write(v);".to_string());
-    mod_lines.push("        RWOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }".to_string());
-    mod_lines.push("    }".to_string());
-    mod_lines.push("}".to_string());
     mod_lines.push("".to_string());
 
     mod_lines.push(format!("pub const DEVICE_NAME: &str = {:?};", device.name));
@@ -549,6 +581,11 @@ pub fn generate_device_dir_with_options(
     files.push(GeneratedFile {
         file_name: "traits.rs".to_string(),
         content: generate_traits_file(),
+    });
+
+    files.push(GeneratedFile {
+        file_name: "types.rs".to_string(),
+        content: generate_types_file(),
     });
 
     let mut st = GenState::new();
@@ -791,192 +828,8 @@ pub fn generate_device_rs_with_options(
     out.writeln(&generate_traits_file())?;
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("#[repr(transparent)]")?;
-    out.writeln("pub struct RO<T>(UnsafeCell<T>);")?;
-    out.writeln("#[repr(transparent)]")?;
-    out.writeln("pub struct WO<T>(UnsafeCell<T>);")?;
-    out.writeln("#[repr(transparent)]")?;
-    out.writeln("pub struct RW<T>(UnsafeCell<T>);")?;
-    out.writeln("#[repr(transparent)]")?;
-    out.writeln("pub struct W1S<T>(UnsafeCell<T>);")?;
-    out.writeln("#[repr(transparent)]")?;
-    out.writeln("pub struct W1C<T>(UnsafeCell<T>);")?;
-    out.writeln("#[repr(transparent)]")?;
-    out.writeln("pub struct W0S<T>(UnsafeCell<T>);")?;
-    out.writeln("#[repr(transparent)]")?;
-    out.writeln("pub struct W0C<T>(UnsafeCell<T>);")?;
-    out.writeln("#[repr(transparent)]")?;
-    out.writeln("pub struct WT<T>(UnsafeCell<T>);")?;
-    out.writeln("")?;
-    out.writeln("unsafe impl<T> Send for RO<T> {}")?;
-    out.writeln("unsafe impl<T> Sync for RO<T> {}")?;
-    out.writeln("unsafe impl<T> Send for WO<T> {}")?;
-    out.writeln("unsafe impl<T> Sync for WO<T> {}")?;
-    out.writeln("unsafe impl<T> Send for RW<T> {}")?;
-    out.writeln("unsafe impl<T> Sync for RW<T> {}")?;
-    out.writeln("unsafe impl<T> Send for W1S<T> {}")?;
-    out.writeln("unsafe impl<T> Sync for W1S<T> {}")?;
-    out.writeln("unsafe impl<T> Send for W1C<T> {}")?;
-    out.writeln("unsafe impl<T> Sync for W1C<T> {}")?;
-    out.writeln("unsafe impl<T> Send for W0S<T> {}")?;
-    out.writeln("unsafe impl<T> Sync for W0S<T> {}")?;
-    out.writeln("unsafe impl<T> Send for W0C<T> {}")?;
-    out.writeln("unsafe impl<T> Sync for W0C<T> {}")?;
-    out.writeln("unsafe impl<T> Send for WT<T> {}")?;
-    out.writeln("unsafe impl<T> Sync for WT<T> {}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: Copy> RO<T> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: Copy> WO<T> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln(
-        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
-    )?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: Copy> RW<T> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln(
-        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
-    )?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: traits::RegValue> W1S<T> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln(
-        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
-    )?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn set_bits(&self, mask: T) { self.write(mask) }")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: traits::RegValue> W1C<T> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln(
-        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
-    )?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn clear_bits(&self, mask: T) { self.write(mask) }")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: traits::RegValue> W0S<T> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln(
-        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
-    )?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn set_bits(&self, mask: T) {")?;
-    out.indent();
-    out.writeln("let m = mask.to_u64() & T::MASK;")?;
-    out.writeln("let v = (!m) & T::MASK;")?;
-    out.writeln("self.write(T::from_u64(v));")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: traits::RegValue> W0C<T> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln(
-        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
-    )?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn clear_bits(&self, mask: T) {")?;
-    out.indent();
-    out.writeln("let m = mask.to_u64() & T::MASK;")?;
-    out.writeln("let v = (!m) & T::MASK;")?;
-    out.writeln("self.write(T::from_u64(v));")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: traits::RegValue> WT<T> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn read(&self) -> T { unsafe { core::ptr::read_volatile(self.0.get()) } }")?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln(
-        "pub fn write(&self, v: T) { unsafe { core::ptr::write_volatile(self.0.get(), v) } }",
-    )?;
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub fn toggle_bits(&self, mask: T) { self.write(mask) }")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-
-    // Compile-time "once" wrappers (state machine types).
-    out.writeln("pub struct Unwritten;")?;
-    out.writeln("pub struct Written;")?;
-    out.writeln("")?;
-    out.writeln("pub struct WOOnce<T, S> { base: usize, offset: usize, _state: PhantomData<S>, _t: PhantomData<T> }")?;
-    out.writeln("pub struct RWOnce<T, S> { base: usize, offset: usize, _state: PhantomData<S>, _t: PhantomData<T> }")?;
-    out.writeln("")?;
-    out.writeln("impl<T: Copy, S> RWOnce<T, S> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub unsafe fn read(&self) -> T {")?;
-    out.indent();
-    out.writeln("let p = (self.base + self.offset) as *const RW<T>;")?;
-    out.writeln("(*p).read()")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: Copy> WOOnce<T, Unwritten> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub unsafe fn write(self, v: T) -> WOOnce<T, Written> {")?;
-    out.indent();
-    out.writeln("let p = (self.base + self.offset) as *const WO<T>;")?;
-    out.writeln("(*p).write(v);")?;
-    out.writeln(
-        "WOOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }",
-    )?;
-    out.dedent();
-    out.writeln("}")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("impl<T: Copy> RWOnce<T, Unwritten> {")?;
-    out.indent();
-    out.writeln("#[inline(always)]")?;
-    out.writeln("pub unsafe fn write(self, v: T) -> RWOnce<T, Written> {")?;
-    out.indent();
-    out.writeln("let p = (self.base + self.offset) as *const RW<T>;")?;
-    out.writeln("(*p).write(v);")?;
-    out.writeln(
-        "RWOnce { base: self.base, offset: self.offset, _state: PhantomData, _t: PhantomData }",
-    )?;
-    out.dedent();
-    out.writeln("}")?;
-    out.dedent();
+    out.writeln("pub mod types {")?;
+    out.writeln(&generate_types_file())?;
     out.writeln("}")?;
     out.writeln("")?;
 
