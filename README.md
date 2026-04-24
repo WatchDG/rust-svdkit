@@ -7,7 +7,7 @@ CMSIS-SVD code generator for Rust PAC/HAL.
 Generate PAC and HAL code from SVD files:
 
 ```bash
-cargo run --bin svd2rs -- --svd_file svds/nrf52840.svd --out_dir generated/nrf52840
+cargo run --bin svd2rs -- --svd_file tests/svds/nrf52840.svd --out_dir generated/nrf52840
 ```
 
 ### Options
