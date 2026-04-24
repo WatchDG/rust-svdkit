@@ -553,7 +553,6 @@ pub fn generate_device_dir_with_options(
     mod_lines.push("pub mod types;".to_string());
     mod_lines.push("pub mod enums;".to_string());
     mod_lines.push("pub mod constants;".to_string());
-    mod_lines.push("use traits::RegValue;".to_string());
     mod_lines.push(
         "use types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};"
             .to_string(),
