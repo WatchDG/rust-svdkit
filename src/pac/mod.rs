@@ -549,8 +549,6 @@ pub fn generate_device_dir_with_options(
     mod_lines.push("#[allow(unsafe_op_in_unsafe_fn)]".to_string());
     mod_lines.push("".to_string());
 
-    mod_lines.push("use core::cell::UnsafeCell;".to_string());
-    mod_lines.push("use core::marker::PhantomData;".to_string());
     mod_lines.push("pub mod traits;".to_string());
     mod_lines.push("pub mod types;".to_string());
     mod_lines.push("pub mod enums;".to_string());
@@ -835,8 +833,6 @@ pub fn generate_device_rs_with_options(
     out.writeln("#[allow(unsafe_op_in_unsafe_fn)]")?;
     out.writeln("")?;
 
-    out.writeln("use core::cell::UnsafeCell;")?;
-    out.writeln("use core::marker::PhantomData;")?;
     out.writeln("")?;
     out.writeln("pub mod traits {")?;
     out.writeln(&generate_traits_file())?;
