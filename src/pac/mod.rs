@@ -2773,6 +2773,8 @@ fn sanitize_type_name(s: &str) -> String {
             .replace("Pullup", "PullUp")
             .replace("DetectmodeDetectmode", "DetectMode")
             .replace("Detectmode", "DetectMode")
+            .replace("Intenset", "IntEnSet")
+            .replace("Intenclr", "IntEnClr")
     }
 }
 
