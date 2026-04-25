@@ -68,7 +68,14 @@ pub fn sanitize_variant_name(s: &str) -> String {
     } else if is_rust_keyword(&out.to_ascii_lowercase()) {
         format!("{out}_")
     } else {
-        out
+        out.replace("Ldetect", "LDetect")
+            .replace("Dirclr", "DirClr")
+            .replace("Dirset", "DirSet")
+            .replace("Outclr", "OutClr")
+            .replace("Outset", "OutSet")
+            .replace("Notlatched", "NotLatched")
+            .replace("Pulldown", "PullDown")
+            .replace("Pullup", "PullUp")
     }
 }
 
