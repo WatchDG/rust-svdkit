@@ -74,10 +74,23 @@ pub fn sanitize_variant_name(s: &str) -> String {
             .replace("Outclr", "OutClr")
             .replace("Outset", "OutSet")
             .replace("Notlatched", "NotLatched")
+            .replace("Notgenerated", "NotGenerated")
             .replace("Pulldown", "PullDown")
             .replace("Pullup", "PullUp")
             .replace("DetectmodeDetectmode", "DetectMode")
             .replace("Detectmode", "DetectMode")
+            .replace("BitmodeBitmode", "Bitmode")
+            .replace("EventsCompareEventsCompare", "EventsCompare")
+            .replace("TasksStopTasksStop", "TasksStop")
+            .replace("TasksStartTasksStart", "TasksStart")
+            .replace("TasksClearTasksClear", "TasksClear")
+            .replace("TasksCaptureTasksCapture", "TasksCapture")
+            .replace("TasksShutdownTasksShutdown", "TasksShutdown")
+            .replace("TasksCountTasksCount", "TasksCount")
+            .replace("ModeMode", "Mode")
+            .replace("ShortsShorts", "Shorts")
+            .replace("PrescalerPrescaler", "Prescaler")
+            .replace("Lowpowercounter", "LowPowerCounter")
     }
 }
 
