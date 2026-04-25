@@ -1356,7 +1356,10 @@ fn generate_cortex_m_rs(device: &svd::Device) -> Result<String> {
 pub fn generate_device_files_with_rt(device: &svd::Device) -> Result<Vec<GeneratedFile>> {
     let file_stem = sanitize_file_stem(&device.name);
     let mut out = Vec::new();
-    out.push(generate_device_file(device)?);
+    let dir = generate_device_dir(device)?;
+    for f in dir.files {
+        out.push(f);
+    }
 
     out.push(GeneratedFile {
         file_name: format!("{file_stem}_cortex_m.rs"),
@@ -1374,18 +1377,22 @@ pub fn generate_device_files_with_rt(device: &svd::Device) -> Result<Vec<Generat
     Ok(out)
 }
 
-/// Записывает `<device>_pac.rs` + `<device>_rt.rs` + `<device>_link.x` в `out_dir`.
+/// Записывает `<device>_pac/` + `<device>_rt.rs` + `<device>_link.x` в `out_dir`.
 pub fn write_device_files_with_rt(
     device: &svd::Device,
     out_dir: &Path,
 ) -> Result<Vec<std::path::PathBuf>> {
     let files = generate_device_files_with_rt(device)?;
-    std::fs::create_dir_all(out_dir)?;
+    let dir_path = out_dir.join(format!("{}_pac", sanitize_file_stem(&device.name)));
+    std::fs::create_dir_all(&dir_path)?;
     let mut out_paths = Vec::new();
     for f in files {
-        let p = out_dir.join(&f.file_name);
-        std::fs::write(&p, f.content)?;
-        out_paths.push(p);
+        let file_path = dir_path.join(&f.file_name);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&file_path, f.content)?;
+        out_paths.push(file_path);
     }
     Ok(out_paths)
 }

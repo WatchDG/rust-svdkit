@@ -47,14 +47,8 @@ fn main() -> Result<()> {
     let svd_path: PathBuf = matches.get_one::<String>("svd_file").unwrap().into();
     let out_dir: PathBuf = matches.get_one::<String>("out_dir").unwrap().into();
 
-    let gen_pac =
-        !matches.get_flag("hal") && !matches.get_flag("rt") && !matches.get_flag("async-rt")
-            || matches.get_flag("pac");
     let gen_pac_single = matches.get_flag("pac");
-    let gen_hal =
-        !matches.get_flag("rt") && !matches.get_flag("async-rt") || matches.get_flag("hal");
     let gen_hal_single = matches.get_flag("hal");
-    let gen_rt = matches.get_flag("rt");
     let gen_async_rt = matches.get_flag("async-rt");
 
     println!("Parsing SVD file: {}", svd_path.display());
@@ -62,6 +56,10 @@ fn main() -> Result<()> {
     println!("Device: {}", device.name);
 
     std::fs::create_dir_all(&out_dir)?;
+
+    let gen_pac = !matches.get_flag("hal") && !matches.get_flag("async-rt");
+    let gen_hal = !matches.get_flag("rt") && !matches.get_flag("async-rt") && !matches.get_flag("pac");
+    let gen_rt = matches.get_flag("rt") || (!matches.get_flag("hal") && !matches.get_flag("async-rt") && !matches.get_flag("pac"));
 
     if gen_pac {
         if gen_pac_single {
