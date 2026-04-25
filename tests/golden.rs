@@ -185,6 +185,43 @@ fn golden_nrf52840_pac_timer0_enums_snapshot() {
 }
 
 #[test]
+fn golden_nrf52840_pac_wdt_registers_snapshot() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let svd_path = manifest_dir.join("tests").join("svds").join("nrf52840.svd");
+
+    let svd_content = std::fs::read_to_string(&svd_path).expect("failed to read nrf52840.svd");
+
+    let device = svdkit::parse_svd(&svd_content).expect("failed to parse nrf52840.svd");
+
+    let gen_dir = pac::generate_device_dir(&device).expect("failed to generate PAC");
+
+    let snapshot_path = manifest_dir
+        .join("tests")
+        .join("snapshots")
+        .join("nrf52840")
+        .join("pac")
+        .join("peripherals")
+        .join("wdt")
+        .join("registers.rs");
+
+    let snapshot_content =
+        std::fs::read_to_string(&snapshot_path).expect("failed to read snapshot wdt/registers.rs");
+
+    let generated_registers = gen_dir
+        .files
+        .iter()
+        .find(|f| f.file_name == "peripherals/wdt/registers.rs")
+        .expect("peripherals/wdt/registers.rs not found in generated files")
+        .content
+        .clone();
+
+    assert_eq!(
+        generated_registers, snapshot_content,
+        "generated wdt/registers.rs does not match snapshot"
+    );
+}
+
+#[test]
 fn golden_nrf52840_pac_traits_snapshot() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let svd_path = manifest_dir.join("tests").join("svds").join("nrf52840.svd");

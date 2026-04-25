@@ -2785,6 +2785,13 @@ fn sanitize_type_name(s: &str) -> String {
             .replace("ShortsShorts", "Shorts")
             .replace("PrescalerPrescaler", "Prescaler")
             .replace("Lowpowercounter", "LowPowerCounter")
+            .replace("EventsTimeoutEventsTimeout", "EventsTimeout")
+            .replace("EventsRzEventsRz", "EventsRz")
+            .replace("TasksRzTasksRz", "TasksRz")
+            .replace("TasksReloadTasksReload", "TasksReload")
+            .replace("Runstatus", "RunStatus")
+            .replace("RunStatusRunStatus", "RunStatus")
+            .replace("Reqstatus", "ReqStatus")
             .replace("Intenset", "IntEnSet")
             .replace("Intenclr", "IntEnClr")
     }

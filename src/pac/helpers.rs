@@ -91,6 +91,10 @@ pub fn sanitize_variant_name(s: &str) -> String {
             .replace("ShortsShorts", "Shorts")
             .replace("PrescalerPrescaler", "Prescaler")
             .replace("Lowpowercounter", "LowPowerCounter")
+            .replace("EventsTimeoutEventsTimeout", "EventsTimeout")
+            .replace("EventsRzEventsRz", "EventsRz")
+            .replace("TasksRzTasksRz", "TasksRz")
+            .replace("TasksReloadTasksReload", "TasksReload")
     }
 }
 
