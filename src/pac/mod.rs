@@ -625,10 +625,12 @@ pub fn generate_device_dir_with_options(
             file_name: format!("peripherals/{}/mod.rs", mod_name),
             content: mod_content,
         });
-        files.push(GeneratedFile {
-            file_name: format!("peripherals/{}/registers.rs", mod_name),
-            content: regs_content,
-        });
+        if !regs_content.trim().is_empty() {
+            files.push(GeneratedFile {
+                file_name: format!("peripherals/{}/registers.rs", mod_name),
+                content: regs_content,
+            });
+        }
         if !enums_content.is_empty() {
             files.push(GeneratedFile {
                 file_name: format!("peripherals/{}/enums.rs", mod_name),
@@ -648,10 +650,18 @@ pub fn generate_device_dir_with_options(
                 .iter_mut()
                 .find(|f| f.file_name == format!("peripherals/{}/mod.rs", mod_name))
             {
-                mod_file.content = mod_file.content.replace(
-                    "pub mod registers;",
-                    "pub mod registers;\npub mod clusters;",
-                );
+                if mod_file.content.contains("pub mod registers;") {
+                    mod_file.content = mod_file.content.replace(
+                        "pub mod registers;",
+                        "pub mod registers;\npub mod clusters;",
+                    );
+                } else {
+                    mod_file.content = mod_file.content.replacen(
+                        "use self::enums as field_enums;",
+                        "use self::enums as field_enums;\n\npub mod clusters;",
+                        1,
+                    );
+                }
             }
 
             let mut clusters_mod_lines = Vec::new();
@@ -700,10 +710,6 @@ fn generate_peripheral_file(
     let mut mod_out = CodeWriter::new();
     let mut regs_out = CodeWriter::new();
 
-    regs_out.writeln("use super::super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
-    regs_out.writeln("use super::super::super::macros::*;")?;
-    regs_out.writeln("")?;
-
     mod_out.writeln("#[allow(non_snake_case)]")?;
     mod_out.writeln("#[allow(non_camel_case_types)]")?;
     mod_out.writeln("#[allow(dead_code)]")?;
@@ -727,16 +733,27 @@ fn generate_peripheral_file(
         .cloned()
         .collect();
 
-    emit_register_block_items(
-        st,
-        &mut CodeWriter::new(),
-        &mut regs_out,
-        type_defs,
-        &ctx,
-        &register_items,
-        0,
-        options,
-    )?;
+    let has_registers = !register_items.is_empty();
+
+    if has_registers {
+        regs_out
+            .writeln("use super::super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
+        regs_out.writeln("use super::super::super::macros::*;")?;
+        regs_out.writeln("")?;
+    }
+
+    if has_registers {
+        emit_register_block_items(
+            st,
+            &mut CodeWriter::new(),
+            &mut regs_out,
+            type_defs,
+            &ctx,
+            &register_items,
+            0,
+            options,
+        )?;
+    }
 
     let mut enums_out = CodeWriter::new();
     if options.emit_field_enums {
@@ -750,100 +767,107 @@ fn generate_peripheral_file(
         mod_out.writeln("")?;
     }
 
-    if !type_defs.s.trim().is_empty() {
-        regs_out.s.push_str(&type_defs.s);
-        regs_out.s.push('\n');
-        type_defs.s.clear();
-    }
+    if has_registers {
+        if !type_defs.s.trim().is_empty() {
+            regs_out.s.push_str(&type_defs.s);
+            regs_out.s.push('\n');
+            type_defs.s.clear();
+        }
 
-    mod_out.writeln("use core::marker::PhantomData;")?;
-    mod_out.writeln("use super::super::macros;")?;
-    mod_out.writeln("use super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
-    mod_out.writeln("pub mod registers;")?;
-    mod_out.writeln("use registers::*;")?;
-    mod_out.writeln("")?;
-
-    mod_out.writeln("#[repr(C)]")?;
-    mod_out.writeln("pub struct RegisterBlock {")?;
-    mod_out.indent();
-
-    emit_register_block_items(
-        st,
-        &mut mod_out,
-        &mut CodeWriter::new(),
-        type_defs,
-        &ctx,
-        &register_items,
-        0,
-        options,
-    )?;
-
-    mod_out.dedent();
-    mod_out.writeln("}")?;
-
-    emit_reset_impl_for_struct(
-        &mut mod_out,
-        st,
-        type_defs,
-        &ctx,
-        &register_items,
-        "RegisterBlock",
-        options,
-    )?;
-
-    mod_out.writeln(&format!(
-        "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
-    ))?;
-    mod_out.writeln(&format!(
-        "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
-    ))?;
-
-    let mut once_regs = Vec::new();
-    let mut name_counts = BTreeMap::new();
-    collect_once_regs(
-        &ctx,
-        &register_items,
-        0,
-        "",
-        None,
-        &mut name_counts,
-        &mut once_regs,
-    );
-    if !once_regs.is_empty() {
-        let once_ty = "Once";
+        mod_out.writeln("use core::marker::PhantomData;")?;
+        mod_out.writeln("use super::super::macros;")?;
+        mod_out.writeln("use super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
+        mod_out.writeln("pub mod registers;")?;
+        mod_out.writeln("use registers::*;")?;
         mod_out.writeln("")?;
-        mod_out.writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
-        mod_out.writeln("///")?;
-        mod_out.writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
-        mod_out.writeln(&format!("pub struct {once_ty} {{"))?;
+
+        mod_out.writeln("#[repr(C)]")?;
+        mod_out.writeln("pub struct RegisterBlock {")?;
         mod_out.indent();
-        mod_out.writeln("base: usize,")?;
-        for r in &once_regs {
-            mod_out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
+
+        emit_register_block_items(
+            st,
+            &mut mod_out,
+            &mut CodeWriter::new(),
+            type_defs,
+            &ctx,
+            &register_items,
+            0,
+            options,
+        )?;
+
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+
+        emit_reset_impl_for_struct(
+            &mut mod_out,
+            st,
+            type_defs,
+            &ctx,
+            &register_items,
+            "RegisterBlock",
+            options,
+        )?;
+
+        mod_out.writeln(&format!(
+            "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
+        ))?;
+        mod_out.writeln(&format!(
+            "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
+        ))?;
+
+        let mut once_regs = Vec::new();
+        let mut name_counts = BTreeMap::new();
+        collect_once_regs(
+            &ctx,
+            &register_items,
+            0,
+            "",
+            None,
+            &mut name_counts,
+            &mut once_regs,
+        );
+        if !once_regs.is_empty() {
+            let once_ty = "Once";
+            mod_out.writeln("")?;
+            mod_out
+                .writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
+            mod_out.writeln("///")?;
+            mod_out
+                .writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
+            mod_out.writeln(&format!("pub struct {once_ty} {{"))?;
+            mod_out.indent();
+            mod_out.writeln("base: usize,")?;
+            for r in &once_regs {
+                mod_out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
+            }
+            mod_out.dedent();
+            mod_out.writeln("}")?;
+            mod_out.writeln(&format!("impl {once_ty} {{"))?;
+            mod_out.indent();
+            mod_out.writeln("/// Create tokens for this peripheral.")?;
+            mod_out.writeln("///")?;
+            mod_out.writeln("/// # Safety")?;
+            mod_out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
+            mod_out.writeln("pub unsafe fn new() -> Self {")?;
+            mod_out.indent();
+            mod_out.writeln("let base = BASE;")?;
+            mod_out.writeln("Self {")?;
+            mod_out.indent();
+            mod_out.writeln("base,")?;
+            for r in &once_regs {
+                mod_out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
+            }
+            mod_out.dedent();
+            mod_out.writeln("}")?;
+            mod_out.dedent();
+            mod_out.writeln("}")?;
+            mod_out.dedent();
+            mod_out.writeln("}")?;
         }
-        mod_out.dedent();
-        mod_out.writeln("}")?;
-        mod_out.writeln(&format!("impl {once_ty} {{"))?;
-        mod_out.indent();
-        mod_out.writeln("/// Create tokens for this peripheral.")?;
-        mod_out.writeln("///")?;
-        mod_out.writeln("/// # Safety")?;
-        mod_out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
-        mod_out.writeln("pub unsafe fn new() -> Self {")?;
-        mod_out.indent();
-        mod_out.writeln("let base = BASE;")?;
-        mod_out.writeln("Self {")?;
-        mod_out.indent();
-        mod_out.writeln("base,")?;
-        for r in &once_regs {
-            mod_out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
-        }
-        mod_out.dedent();
-        mod_out.writeln("}")?;
-        mod_out.dedent();
-        mod_out.writeln("}")?;
-        mod_out.dedent();
-        mod_out.writeln("}")?;
+    } else {
+        mod_out.writeln("#[repr(C)]")?;
+        mod_out.writeln("pub struct RegisterBlock;")?;
     }
 
     Ok((
