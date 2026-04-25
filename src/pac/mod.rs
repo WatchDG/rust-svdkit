@@ -2707,10 +2707,14 @@ fn sanitize_module_name(s: &str) -> String {
     }
     if out.is_empty() {
         "periph".to_string()
-    } else if helpers::is_rust_keyword(&out.to_ascii_lowercase()) {
-        format!("{out}_")
     } else {
-        out.to_ascii_lowercase()
+        let out = out.to_ascii_lowercase();
+        let out = out.strip_suffix("__s_").unwrap_or(&out).to_string();
+        if helpers::is_rust_keyword(&out) {
+            format!("{out}_")
+        } else {
+            out
+        }
     }
 }
 
