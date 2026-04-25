@@ -1440,6 +1440,19 @@ impl GenState {
         }
     }
 
+    fn alloc_enum_type_name(&mut self, base: String) -> String {
+        let key = format!("enum_{}", base);
+        let n = self.type_name_counters.entry(key).or_insert(0);
+        if *n == 0 {
+            *n = 1;
+            base
+        } else {
+            let out = format!("{base}_{}", *n);
+            *n += 1;
+            out
+        }
+    }
+
     /// Returns true if the type has NOT been emitted before and is now marked as emitted.
     fn mark_type_emitted(&mut self, ty: &str) -> bool {
         self.emitted_types.insert(ty.to_string())
@@ -2758,6 +2771,8 @@ fn sanitize_type_name(s: &str) -> String {
             .replace("Outset", "OutSet")
             .replace("Pulldown", "PullDown")
             .replace("Pullup", "PullUp")
+            .replace("DetectmodeDetectmode", "DetectMode")
+            .replace("Detectmode", "DetectMode")
     }
 }
 
@@ -3296,11 +3311,12 @@ fn emit_enum_for_field(
         fp.push(';');
     }
 
-    let ty = if let Some(existing) = st.lookup_enum_type(&base, &fp) {
+    let scoped_base = base;
+    let ty = if let Some(existing) = st.lookup_enum_type(&scoped_base, &fp) {
         existing
     } else {
-        let new_ty = st.alloc_type_name(base.clone());
-        st.remember_enum_type(&base, &fp, &new_ty);
+        let new_ty = st.alloc_enum_type_name(scoped_base.clone());
+        st.remember_enum_type(&scoped_base, &fp, &new_ty);
         new_ty
     };
 

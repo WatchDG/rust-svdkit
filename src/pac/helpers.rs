@@ -76,6 +76,8 @@ pub fn sanitize_variant_name(s: &str) -> String {
             .replace("Notlatched", "NotLatched")
             .replace("Pulldown", "PullDown")
             .replace("Pullup", "PullUp")
+            .replace("DetectmodeDetectmode", "DetectMode")
+            .replace("Detectmode", "DetectMode")
     }
 }
 
