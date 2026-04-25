@@ -635,15 +635,25 @@ pub fn generate_device_dir_with_options(
                 content: enums_content,
             });
         }
-        
+
         let items = peripheral_register_items(device, p);
-        let has_clusters = items.iter().any(|item| {
-            matches!(item, svd::RegisterBlockItem::Cluster { .. })
-        });
-        
+        let has_clusters = items
+            .iter()
+            .any(|item| matches!(item, svd::RegisterBlockItem::Cluster { .. }));
+
         if has_clusters {
             let cluster_files = generate_cluster_dir_for_peripheral(device, p, &mut st, options)?;
-            
+
+            if let Some(mod_file) = files
+                .iter_mut()
+                .find(|f| f.file_name == format!("peripherals/{}/mod.rs", mod_name))
+            {
+                mod_file.content = mod_file.content.replace(
+                    "pub mod registers;",
+                    "pub mod registers;\npub mod clusters;",
+                );
+            }
+
             let mut clusters_mod_lines = Vec::new();
             clusters_mod_lines.push("#[allow(non_snake_case)]".to_string());
             clusters_mod_lines.push("#[allow(non_camel_case_types)]".to_string());
@@ -651,23 +661,19 @@ pub fn generate_device_dir_with_options(
             clusters_mod_lines.push("#[allow(unused_imports)]".to_string());
             clusters_mod_lines.push("#[allow(unsafe_op_in_unsafe_fn)]".to_string());
             clusters_mod_lines.push("".to_string());
-            
+
             for cf in &cluster_files {
-                if cf.file_name == "mod.rs" {
-                    let struct_line = cf.content.lines().find(|l| l.contains("pub struct"));
-                    if let Some(line) = struct_line {
-                        let ty_name = line.trim_start_matches("pub struct ").trim_end_matches(" {");
-                        let cluster_mod_name = sanitize_module_name(&ty_name.to_lowercase());
-                        clusters_mod_lines.push(format!("pub mod {cluster_mod_name};"));
-                    }
+                if cf.file_name.ends_with("/mod.rs") {
+                    let mod_dir_name = cf.file_name.trim_end_matches("/mod.rs");
+                    clusters_mod_lines.push(format!("pub mod {mod_dir_name};"));
                 }
             }
-            
+
             files.push(GeneratedFile {
                 file_name: format!("peripherals/{}/clusters/mod.rs", mod_name),
                 content: clusters_mod_lines.join("\n"),
             });
-            
+
             for cf in cluster_files {
                 let file_name = format!("peripherals/{}/clusters/{}", mod_name, cf.file_name);
                 files.push(GeneratedFile {
@@ -715,13 +721,19 @@ fn generate_peripheral_file(
         cluster_stack: Vec::new(),
     };
 
+    let register_items: Vec<_> = items
+        .iter()
+        .filter(|item| matches!(item, svd::RegisterBlockItem::Register { .. }))
+        .cloned()
+        .collect();
+
     emit_register_block_items(
         st,
         &mut CodeWriter::new(),
         &mut regs_out,
         type_defs,
         &ctx,
-        items,
+        &register_items,
         0,
         options,
     )?;
@@ -734,6 +746,7 @@ fn generate_peripheral_file(
 
     if has_enums {
         mod_out.writeln("pub mod enums;")?;
+        mod_out.writeln("use self::enums as field_enums;")?;
         mod_out.writeln("")?;
     }
 
@@ -760,7 +773,7 @@ fn generate_peripheral_file(
         &mut CodeWriter::new(),
         type_defs,
         &ctx,
-        items,
+        &register_items,
         0,
         options,
     )?;
@@ -773,7 +786,7 @@ fn generate_peripheral_file(
         st,
         type_defs,
         &ctx,
-        items,
+        &register_items,
         "RegisterBlock",
         options,
     )?;
@@ -787,7 +800,15 @@ fn generate_peripheral_file(
 
     let mut once_regs = Vec::new();
     let mut name_counts = BTreeMap::new();
-    collect_once_regs(&ctx, items, 0, "", None, &mut name_counts, &mut once_regs);
+    collect_once_regs(
+        &ctx,
+        &register_items,
+        0,
+        "",
+        None,
+        &mut name_counts,
+        &mut once_regs,
+    );
     if !once_regs.is_empty() {
         let once_ty = "Once";
         mod_out.writeln("")?;
@@ -861,8 +882,8 @@ pub fn generate_cluster_dir_for_peripheral(
         periph: Some(p),
         cluster_stack: Vec::new(),
     };
-    
-    collect_clusters(items, &ctx, st, options)
+
+    collect_clusters(items, &ctx, st, options, 0)
 }
 
 fn collect_clusters(
@@ -870,16 +891,17 @@ fn collect_clusters(
     ctx: &Ctx<'_>,
     st: &mut GenState,
     options: PacOptions,
+    depth: usize,
 ) -> Result<Vec<GeneratedFile>> {
     let mut files = Vec::new();
-    
+
     for item in items {
         if let svd::RegisterBlockItem::Cluster { cluster } = item {
-            let cluster_files = generate_cluster_files(cluster, ctx, st, options)?;
+            let cluster_files = generate_cluster_files(cluster, ctx, st, options, depth)?;
             files.extend(cluster_files);
         }
     }
-    
+
     Ok(files)
 }
 
@@ -888,25 +910,34 @@ fn generate_cluster_files(
     ctx: &Ctx<'_>,
     st: &mut GenState,
     options: PacOptions,
+    depth: usize,
 ) -> Result<Vec<GeneratedFile>> {
     let mut files = Vec::new();
     let cluster_mod_name = sanitize_module_name(&c.name);
-    
+
     let mut mod_out = CodeWriter::new();
     let mut regs_out = CodeWriter::new();
     let mut type_defs = CodeWriter::new();
-    
-    regs_out.writeln("use super::super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
-    regs_out.writeln("use super::super::super::macros::*;")?;
+
+    let periph_name = ctx
+        .periph
+        .map(|p| sanitize_module_name(&p.name.to_lowercase()))
+        .unwrap_or_default();
+
+    regs_out.writeln(&format!(
+        "use crate::nrf52840_pac::peripherals::{periph_name}::enums as field_enums;"
+    ))?;
+    regs_out.writeln("use crate::nrf52840_pac::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
+    regs_out.writeln("use crate::nrf52840_pac::macros::*;")?;
     regs_out.writeln("")?;
-    
+
     mod_out.writeln("#[allow(non_snake_case)]")?;
     mod_out.writeln("#[allow(non_camel_case_types)]")?;
     mod_out.writeln("#[allow(dead_code)]")?;
     mod_out.writeln("#[allow(unused_imports)]")?;
     mod_out.writeln("#[allow(unsafe_op_in_unsafe_fn)]")?;
     mod_out.writeln("")?;
-    
+
     let child_ctx = Ctx {
         device: ctx.device,
         periph: ctx.periph,
@@ -916,7 +947,7 @@ fn generate_cluster_files(
             s
         },
     };
-    
+
     emit_register_block_items(
         st,
         &mut CodeWriter::new(),
@@ -927,22 +958,26 @@ fn generate_cluster_files(
         0,
         options,
     )?;
-    
+
     if !type_defs.s.trim().is_empty() {
         regs_out.s.push_str(&type_defs.s);
         regs_out.s.push('\n');
+        type_defs.s.clear();
     }
-    
-    mod_out.writeln("use super::super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
-    mod_out.writeln("use super::super::super::macros;")?;
+
+    mod_out.writeln("use crate::nrf52840_pac::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
+    mod_out.writeln("use crate::nrf52840_pac::macros;")?;
+    mod_out.writeln(&format!(
+        "use crate::nrf52840_pac::peripherals::{periph_name}::enums;"
+    ))?;
     mod_out.writeln("pub mod registers;")?;
     mod_out.writeln("use registers::*;")?;
     mod_out.writeln("")?;
-    
+
     mod_out.writeln("#[repr(C)]")?;
     mod_out.writeln(&format!("pub struct {} {{", sanitize_type_name(&c.name)))?;
     mod_out.indent();
-    
+
     emit_register_block_items(
         st,
         &mut mod_out,
@@ -953,10 +988,10 @@ fn generate_cluster_files(
         0,
         options,
     )?;
-    
+
     mod_out.dedent();
     mod_out.writeln("}")?;
-    
+
     emit_reset_impl_for_struct(
         &mut mod_out,
         st,
@@ -966,14 +1001,20 @@ fn generate_cluster_files(
         &sanitize_type_name(&c.name),
         options,
     )?;
-    
-    let has_nested_clusters = c.items.iter().any(|it| {
-        matches!(it, svd::RegisterBlockItem::Cluster { .. })
-    });
+
+    if !type_defs.s.trim().is_empty() {
+        regs_out.s.push_str(&type_defs.s);
+        regs_out.s.push('\n');
+    }
+
+    let has_nested_clusters = c
+        .items
+        .iter()
+        .any(|it| matches!(it, svd::RegisterBlockItem::Cluster { .. }));
     if has_nested_clusters {
         mod_out.writeln("pub mod clusters;")?;
     }
-    
+
     files.push(GeneratedFile {
         file_name: format!("{}/mod.rs", cluster_mod_name),
         content: mod_out.into_string(),
@@ -982,15 +1023,15 @@ fn generate_cluster_files(
         file_name: format!("{}/registers.rs", cluster_mod_name),
         content: regs_out.into_string(),
     });
-    
-    let nested_files = collect_clusters(&c.items, &child_ctx, st, options)?;
+
+    let nested_files = collect_clusters(&c.items, &child_ctx, st, options, depth + 1)?;
     for f in nested_files {
         files.push(GeneratedFile {
             file_name: format!("{}/{}", cluster_mod_name, f.file_name),
             content: f.content,
         });
     }
-    
+
     if has_nested_clusters {
         let mut clusters_mod = CodeWriter::new();
         clusters_mod.writeln("#[allow(non_snake_case)]")?;
@@ -999,20 +1040,20 @@ fn generate_cluster_files(
         clusters_mod.writeln("#[allow(unused_imports)]")?;
         clusters_mod.writeln("#[allow(unsafe_op_in_unsafe_fn)]")?;
         clusters_mod.writeln("")?;
-        
+
         for item in &c.items {
             if let svd::RegisterBlockItem::Cluster { cluster } = item {
                 let sub_mod_name = sanitize_module_name(&cluster.name);
                 clusters_mod.writeln(&format!("pub mod {sub_mod_name};"))?;
             }
         }
-        
+
         files.push(GeneratedFile {
             file_name: format!("{}/clusters/mod.rs", cluster_mod_name),
             content: clusters_mod.into_string(),
         });
     }
-    
+
     Ok(files)
 }
 
@@ -1835,9 +1876,6 @@ fn cluster_rust_type_and_size(
         type_defs.writeln("}")?;
         type_defs.writeln("")?;
 
-        // Reset implementation for this cluster.
-        // Note: we must not borrow `type_defs` mutably twice, so we generate the impl
-        // into a temporary writer while nested cluster type defs still go into `type_defs`.
         let mut impl_out = CodeWriter::new();
         emit_reset_impl_for_struct(
             &mut impl_out,
@@ -2519,6 +2557,21 @@ fn collect_once_regs(
 struct CodeWriter {
     s: String,
     indent: usize,
+}
+
+impl Clone for CodeWriter {
+    fn clone(&self) -> Self {
+        Self {
+            s: self.s.clone(),
+            indent: self.indent,
+        }
+    }
+}
+
+impl Default for CodeWriter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CodeWriter {
