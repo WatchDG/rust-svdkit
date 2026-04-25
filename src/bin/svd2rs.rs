@@ -58,8 +58,10 @@ fn main() -> Result<()> {
     std::fs::create_dir_all(&out_dir)?;
 
     let gen_pac = !matches.get_flag("hal") && !matches.get_flag("async-rt");
-    let gen_hal = !matches.get_flag("rt") && !matches.get_flag("async-rt") && !matches.get_flag("pac");
-    let gen_rt = matches.get_flag("rt") || (!matches.get_flag("hal") && !matches.get_flag("async-rt") && !matches.get_flag("pac"));
+    let gen_hal =
+        !matches.get_flag("rt") && !matches.get_flag("async-rt") && !matches.get_flag("pac");
+    let gen_rt = matches.get_flag("rt")
+        || (!matches.get_flag("hal") && !matches.get_flag("async-rt") && !matches.get_flag("pac"));
 
     if gen_pac {
         if gen_pac_single {
