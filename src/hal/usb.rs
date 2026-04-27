@@ -984,71 +984,57 @@ impl UsbInfo {
         s.push_str("            }\n\n");
 
         if self.has_ep_arrays {
-            let epin_f = self.field_epin.as_ref().unwrap();
-            let epout_f = self.field_epout.as_ref().unwrap();
-            let epin_ty = format!("pac::peripherals::{}::Epin", self.periph_mod);
-            let epout_ty = format!("pac::peripherals::{}::Epout", self.periph_mod);
+            let epin_f = self.field_epin.as_deref().unwrap_or("epin");
+            let epout_f = self.field_epout.as_deref().unwrap_or("epout");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_write_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
             s.push_str("                if maxcnt > 64 { return; }\n");
-            s.push_str("                unsafe {\n");
-            s.push_str(&format!("                    let ep = &*(self.usb.{epin_f}.as_ptr().add(0).cast::<{epin_ty}>());\n"));
-            s.push_str("                    ep.ptr.write(ptr as u32);\n");
-            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
-            s.push_str("                }\n");
+            s.push_str(&format!("                self.usb.{epin_f}[0].ptr.write(ptr as u32);\n"));
+            s.push_str(&format!("                self.usb.{epin_f}[0].maxcnt.write(maxcnt as u32);\n"));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_read_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
             s.push_str("                if maxcnt > 64 { return; }\n");
-            s.push_str("                unsafe {\n");
-            s.push_str(&format!("                    let ep = &*(self.usb.{epout_f}.as_ptr().add(0).cast::<{epout_ty}>());\n"));
-            s.push_str("                    ep.ptr.write(ptr as u32);\n");
-            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
-            s.push_str("                }\n");
+            s.push_str(&format!("                self.usb.{epout_f}[0].ptr.write(ptr as u32);\n"));
+            s.push_str(&format!("                self.usb.{epout_f}[0].maxcnt.write(maxcnt as u32);\n"));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
-            s.push_str(&format!("                unsafe {{ (&*(self.usb.{epout_f}.as_ptr().add(0).cast::<{epout_ty}>())).amount.read() }}\n"));
+            s.push_str(&format!("                self.usb.{epout_f}[0].amount.read()\n"));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
-            s.push_str(&format!("                unsafe {{ (&*(self.usb.{epin_f}.as_ptr().add(0).cast::<{epin_ty}>())).amount.read() }}\n"));
+            s.push_str(&format!("                self.usb.{epin_f}[0].amount.read()\n"));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn write_data_to_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
             s.push_str("                if ep_num > 7 || maxcnt > 64 { return; }\n");
-            s.push_str("                unsafe {\n");
-            s.push_str(&format!("                    let ep = &*(self.usb.{epin_f}.as_ptr().add(ep_num).cast::<{epin_ty}>());\n"));
-            s.push_str("                    ep.ptr.write(ptr as u32);\n");
-            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
-            s.push_str("                }\n");
+            s.push_str(&format!("                self.usb.{epin_f}[ep_num].ptr.write(ptr as u32);\n"));
+            s.push_str(&format!("                self.usb.{epin_f}[ep_num].maxcnt.write(maxcnt as u32);\n"));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn read_data_from_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
             s.push_str("                if ep_num > 7 || maxcnt > 64 { return; }\n");
-            s.push_str("                unsafe {\n");
-            s.push_str(&format!("                    let ep = &*(self.usb.{epout_f}.as_ptr().add(ep_num).cast::<{epout_ty}>());\n"));
-            s.push_str("                    ep.ptr.write(ptr as u32);\n");
-            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
-            s.push_str("                }\n");
+            s.push_str(&format!("                self.usb.{epout_f}[ep_num].ptr.write(ptr as u32);\n"));
+            s.push_str(&format!("                self.usb.{epout_f}[ep_num].maxcnt.write(maxcnt as u32);\n"));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn get_endpoint_in_amount(&self, ep_num: usize) -> u32 {\n");
             s.push_str("                if ep_num > 7 { return 0; }\n");
-            s.push_str(&format!("                unsafe {{ (&*(self.usb.{epin_f}.as_ptr().add(ep_num).cast::<{epin_ty}>())).amount.read() }}\n"));
+            s.push_str(&format!("                self.usb.{epin_f}[ep_num].amount.read()\n"));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn get_endpoint_out_amount(&self, ep_num: usize) -> u32 {\n");
             s.push_str("                if ep_num > 7 { return 0; }\n");
-            s.push_str(&format!("                unsafe {{ (&*(self.usb.{epout_f}.as_ptr().add(ep_num).cast::<{epout_ty}>())).amount.read() }}\n"));
+            s.push_str(&format!("                self.usb.{epout_f}[ep_num].amount.read()\n"));
             s.push_str("            }\n");
         } else {
             s.push_str("            #[repr(C)]\n");
@@ -1497,7 +1483,21 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
         };
         let epin_name = gpio::find_register_prefer_exact(items, "EPIN");
         let epout_name = gpio::find_register_prefer_exact(items, "EPOUT");
-        let has_ep_arrays = epin_name.is_some() && epout_name.is_some();
+        let mut has_epin_cluster = false;
+        let mut has_epout_cluster = false;
+        for it in items {
+            if let svd::RegisterBlockItem::Cluster { cluster } = it {
+                let name = cluster.name.to_ascii_uppercase();
+                if name.contains("EPIN") {
+                    has_epin_cluster = true;
+                }
+                if name.contains("EPOUT") {
+                    has_epout_cluster = true;
+                }
+            }
+        }
+        let has_ep_arrays = (epin_name.is_some() && epout_name.is_some())
+            || (has_epin_cluster && has_epout_cluster);
 
         out.push(UsbInfo {
             periph_name: p.name.clone(),

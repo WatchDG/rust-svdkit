@@ -800,47 +800,85 @@ fn generate_peripheral_file(
         mod_out.writeln("")?;
     }
 
-    if has_registers {
+    if has_registers || items.iter().any(|it| matches!(it, svd::RegisterBlockItem::Cluster { .. })) {
         if !type_defs.s.trim().is_empty() {
             regs_out.s.push_str(&type_defs.s);
             regs_out.s.push('\n');
             type_defs.s.clear();
         }
 
+        if regs_out.s.contains("field_enums::") {
+            regs_out.s = regs_out.s.replace("field_enums::", "enums::");
+            if let Some(pos) = regs_out.s.find("macros::*;\n") {
+                let insert_at = pos + "macros::*;\n".len();
+                regs_out.s.insert_str(insert_at, "use super::enums;\n\n");
+            }
+        }
+
         mod_out.writeln("use core::marker::PhantomData;")?;
         mod_out.writeln("use super::super::macros;")?;
         mod_out.writeln("use super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
-        mod_out.writeln("pub mod registers;")?;
-        mod_out.writeln("use registers::*;")?;
+        if has_registers {
+            mod_out.writeln("pub mod registers;")?;
+            mod_out.writeln("use registers::*;")?;
+        }
         mod_out.writeln("")?;
 
         mod_out.writeln("#[repr(C)]")?;
         mod_out.writeln("pub struct RegisterBlock {")?;
         mod_out.indent();
 
-        emit_register_block_items(
-            st,
-            &mut mod_out,
-            &mut CodeWriter::new(),
-            type_defs,
-            &ctx,
-            &register_items,
-            0,
-            options,
-        )?;
+        {
+            let snap = st.snapshot();
+            let mut body_type_defs = CodeWriter::new();
+            emit_register_block_items(
+                st,
+                &mut mod_out,
+                &mut CodeWriter::new(),
+                &mut body_type_defs,
+                &ctx,
+                items,
+                0,
+                options,
+            )?;
+            drop(body_type_defs);
+            st.restore(snap);
+        }
 
         mod_out.dedent();
         mod_out.writeln("}")?;
 
-        emit_reset_impl_for_struct(
-            &mut mod_out,
-            st,
-            type_defs,
-            &ctx,
-            &register_items,
-            "RegisterBlock",
-            options,
-        )?;
+        if !type_defs.s.trim().is_empty() {
+            regs_out.s.push_str(&type_defs.s);
+            regs_out.s.push('\n');
+            type_defs.s.clear();
+        }
+
+        if regs_out.s.contains("field_enums::") {
+            regs_out.s = regs_out.s.replace("field_enums::", "enums::");
+            if !regs_out.s.contains("use super::enums;") {
+                if let Some(pos) = regs_out.s.find("macros::*;\n") {
+                    let insert_at = pos + "macros::*;\n".len();
+                    regs_out.s.insert_str(insert_at, "use super::enums;\n\n");
+                }
+            }
+        }
+
+        {
+            let snap = st.snapshot();
+            let mut reset_type_defs = CodeWriter::new();
+            emit_reset_impl_for_struct(
+                &mut mod_out,
+                st,
+                &mut reset_type_defs,
+                &ctx,
+                items,
+                "RegisterBlock",
+                options,
+            )?;
+            drop(reset_type_defs);
+            st.restore(snap);
+        }
 
         mod_out.writeln(&format!(
             "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
@@ -1586,6 +1624,26 @@ impl GenState {
     fn mark_reg_emitted(&mut self, ty: &str) -> bool {
         self.emitted_regs.insert(ty.to_string())
     }
+
+    fn snapshot(&self) -> GenStateSnapshot {
+        GenStateSnapshot {
+            emitted_types: self.emitted_types.clone(),
+            emitted_regs: self.emitted_regs.clone(),
+            emitted_enums: self.emitted_enums.clone(),
+        }
+    }
+
+    fn restore(&mut self, snap: GenStateSnapshot) {
+        self.emitted_types = snap.emitted_types;
+        self.emitted_regs = snap.emitted_regs;
+        self.emitted_enums = snap.emitted_enums;
+    }
+}
+
+struct GenStateSnapshot {
+    emitted_types: std::collections::HashSet<String>,
+    emitted_regs: std::collections::HashSet<String>,
+    emitted_enums: std::collections::HashSet<String>,
 }
 
 // --------------------------- implementation ---------------------------
@@ -1913,6 +1971,7 @@ fn cluster_rust_type_and_size(
     // - Prefer reusing the same Rust type for clusters with the same (name, layout).
     // - Only disambiguate (suffix _1, _2...) when the same name appears with a different layout.
     let base_ty = sanitize_type_name(&c.name);
+    let cluster_mod = sanitize_module_name(&c.name);
 
     // Compute cluster byte size by looking at its members.
     let child_ctx = Ctx {
@@ -1957,6 +2016,20 @@ fn cluster_rust_type_and_size(
             options,
         )?;
 
+        // If cluster has dim and effective stride is larger than struct body,
+        // add trailing padding so struct size matches dimIncrement.
+        let final_size = if let Some(dim) = &c.dim {
+            if end > 0 && end < dim.dim_increment {
+                let gap = dim.dim_increment - end;
+                body.writeln(&format!("pub _reserved: [u8; {gap} as usize],"))?;
+                dim.dim_increment
+            } else {
+                end
+            }
+        } else {
+            end
+        };
+
         type_defs.writeln(&format!("/// Cluster `{}`", c.name))?;
         type_defs.writeln("#[repr(C)]")?;
         type_defs.writeln(&format!("pub struct {ty} {{"))?;
@@ -1977,12 +2050,12 @@ fn cluster_rust_type_and_size(
         type_defs.s.push_str(&impl_out.s);
         type_defs.s.push('\n');
 
-        // Save computed size for later users.
-        st.set_type_size_bytes(&ty, end);
+        st.set_type_size_bytes(&ty, final_size);
     }
 
     let size = st.get_type_size_bytes(&ty).unwrap_or(0);
-    Ok((ty, size))
+    let path_ty = format!("clusters::{}::{}", cluster_mod, base_ty);
+    Ok((path_ty, size))
 }
 
 fn cluster_layout_fingerprint(ctx: &Ctx<'_>, c: &svd::Cluster) -> String {
