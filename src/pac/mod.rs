@@ -2323,6 +2323,32 @@ fn resolve_use_enumerated_values(ctx: &Ctx<'_>, r: &svd::Register, f: &svd::Fiel
     }
 }
 
+fn resolve_read_action(ctx: &Ctx<'_>, r: &svd::Register) -> Option<svd::ReadAction> {
+    let mut cur = r;
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    loop {
+        if let Some(ra) = cur.read_action {
+            return Some(ra);
+        }
+        for f in &cur.field {
+            if let Some(ra) = f.read_action {
+                return Some(ra);
+            }
+        }
+        let Some(df) = cur.derived_from.as_deref() else {
+            return None;
+        };
+        let cur_key = ctx_reg_path(ctx, &cur.name);
+        if !seen.insert(cur_key) {
+            return None;
+        }
+        let Some(next) = find_register_in_ctx(ctx, df) else {
+            return None;
+        };
+        cur = next;
+    }
+}
+
 fn find_register_in_ctx<'a>(ctx: &Ctx<'a>, derived_from: &str) -> Option<&'a svd::Register> {
     let Some(p) = ctx.periph else {
         return None;
@@ -3077,6 +3103,40 @@ fn register_wrapper_type(
     };
 
     out.writeln(&format!("{macro_name}!({ty}, {base_ty});"))?;
+
+    if let Some(read_action) = resolve_read_action(ctx, r) {
+        if has_read {
+            let (method_name, doc) = match read_action {
+                svd::ReadAction::Clear => (
+                    "read_and_clear",
+                    " Reads the register; hardware clears it to 0 after the read.",
+                ),
+                svd::ReadAction::Set => (
+                    "read_and_set",
+                    " Reads the register; hardware sets it to the reset/default value after the read.",
+                ),
+                svd::ReadAction::Modify => (
+                    "read_side_effect",
+                    " Reads the register; the value may be modified by hardware as a side effect.",
+                ),
+                svd::ReadAction::ModifyExternal => (
+                    "read_side_effect",
+                    " Reads the register; the value may be modified by external hardware as a side effect.",
+                ),
+            };
+            out.writeln(&format!("impl {ty} {{"))?;
+            out.indent();
+            out.writeln(&format!("///{doc}"))?;
+            out.writeln("#[inline(always)]")?;
+            out.writeln(&format!(
+                "pub fn {method_name}(&self) -> {base_ty} {{ self.read() }}"
+            ))?;
+            out.writeln("")?;
+            out.dedent();
+            out.writeln("}")?;
+            out.writeln("")?;
+        }
+    }
 
     // Field enum helpers.
     let mut has_field_methods = false;
