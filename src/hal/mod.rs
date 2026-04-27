@@ -6,7 +6,6 @@ use crate::{Result, svd};
 use std::path::Path;
 
 pub mod async_rt;
-pub mod cdc_acm;
 pub mod clock;
 pub mod gpio;
 pub mod power;
@@ -78,9 +77,6 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
     let has_usb = !usb_devices.is_empty();
     if has_usb {
         mod_lines.push("pub mod usb;".to_string());
-        mod_lines.push("pub mod cdc_acm;".to_string());
-    } else {
-        mod_lines.push("pub mod cdc_acm;".to_string());
     }
 
     let clocks = clock::collect_clocks(device);
@@ -165,14 +161,6 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
         files.push(GeneratedFile {
             file_name: "usb/mod.rs".to_string(),
             content,
-        });
-    }
-
-    {
-        let cdc_content = cdc_acm::generate_cdc_acm_content(device)?;
-        files.push(GeneratedFile {
-            file_name: "cdc_acm/mod.rs".to_string(),
-            content: cdc_content,
         });
     }
 
@@ -302,10 +290,6 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
         }
         out.push_str("}\n\n");
     }
-    if !has_usb {
-        out.push('\n');
-    }
-    out.push_str("pub mod cdc_acm;\n");
 
     let clocks = clock::collect_clocks(device);
     let has_clocks = !clocks.is_empty();

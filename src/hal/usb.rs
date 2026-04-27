@@ -569,8 +569,10 @@ pub struct UsbInfo {
     field_tasks_startepout: String,
     field_events_endepin_array: String,
     field_events_endepout_array: String,
-    field_epin: String,
-    field_epout: String,
+    field_epin: Option<String>,
+    field_epout: Option<String>,
+
+    has_ep_arrays: bool,
 }
 
 impl UsbInfo {
@@ -911,64 +913,6 @@ impl UsbInfo {
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn ep0_write_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
-        s.push_str("                if maxcnt > 64 {\n");
-        s.push_str("                    return;\n");
-        s.push_str("                }\n");
-        s.push_str("                unsafe {\n");
-        s.push_str(&format!(
-            "                    let ep0 = &*(self.usb.{}.as_ptr().add(0 * 20).cast::<",
-            self.field_epin
-        ));
-        s.push_str("pac::");
-        s.push_str(&self.periph_mod);
-        s.push_str("::Epin>());\n");
-        s.push_str("                    ep0.ptr.write(ptr as u32);\n");
-        s.push_str("                    ep0.maxcnt.write(maxcnt as u32);\n");
-        s.push_str("                }\n");
-        s.push_str("            }\n\n");
-
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn ep0_read_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
-        s.push_str("                if maxcnt > 64 {\n");
-        s.push_str("                    return;\n");
-        s.push_str("                }\n");
-        s.push_str("                unsafe {\n");
-        s.push_str(&format!(
-            "                    let ep0 = &*(self.usb.{}.as_ptr().add(0 * 20).cast::<",
-            self.field_epout
-        ));
-        s.push_str("pac::");
-        s.push_str(&self.periph_mod);
-        s.push_str("::Epout>());\n");
-        s.push_str("                    ep0.ptr.write(ptr as u32);\n");
-        s.push_str("                    ep0.maxcnt.write(maxcnt as u32);\n");
-        s.push_str("                }\n");
-        s.push_str("            }\n\n");
-
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
-        s.push_str(&format!(
-            "                unsafe {{ (&*(self.usb.{}.as_ptr().add(0 * 20).cast::<",
-            self.field_epout
-        ));
-        s.push_str("pac::");
-        s.push_str(&self.periph_mod);
-        s.push_str("::Epout>())).amount.read() }\n");
-        s.push_str("            }\n\n");
-
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
-        s.push_str(&format!(
-            "                unsafe {{ (&*(self.usb.{}.as_ptr().add(0 * 20).cast::<",
-            self.field_epin
-        ));
-        s.push_str("pac::");
-        s.push_str(&self.periph_mod);
-        s.push_str("::Epin>())).amount.read() }\n");
-        s.push_str("            }\n\n");
-
-        s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn stall_ep0(&self) {\n");
         s.push_str("                self.usb.tasks_ep0stall.write(1);\n");
         s.push_str("            }\n\n");
@@ -1039,77 +983,460 @@ impl UsbInfo {
         s.push_str("                matches!(b_request, 0x20 | 0x21 | 0x22 | 0x23)\n");
         s.push_str("            }\n\n");
 
+        if self.has_ep_arrays {
+            let epin_f = self.field_epin.as_ref().unwrap();
+            let epout_f = self.field_epout.as_ref().unwrap();
+            let epin_ty = format!("pac::peripherals::{}::Epin", self.periph_mod);
+            let epout_ty = format!("pac::peripherals::{}::Epout", self.periph_mod);
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn ep0_write_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
+            s.push_str("                if maxcnt > 64 { return; }\n");
+            s.push_str("                unsafe {\n");
+            s.push_str(&format!("                    let ep = &*(self.usb.{epin_f}.as_ptr().add(0).cast::<{epin_ty}>());\n"));
+            s.push_str("                    ep.ptr.write(ptr as u32);\n");
+            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+            s.push_str("                }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn ep0_read_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
+            s.push_str("                if maxcnt > 64 { return; }\n");
+            s.push_str("                unsafe {\n");
+            s.push_str(&format!("                    let ep = &*(self.usb.{epout_f}.as_ptr().add(0).cast::<{epout_ty}>());\n"));
+            s.push_str("                    ep.ptr.write(ptr as u32);\n");
+            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+            s.push_str("                }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
+            s.push_str(&format!("                unsafe {{ (&*(self.usb.{epout_f}.as_ptr().add(0).cast::<{epout_ty}>())).amount.read() }}\n"));
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
+            s.push_str(&format!("                unsafe {{ (&*(self.usb.{epin_f}.as_ptr().add(0).cast::<{epin_ty}>())).amount.read() }}\n"));
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn write_data_to_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
+            s.push_str("                if ep_num > 7 || maxcnt > 64 { return; }\n");
+            s.push_str("                unsafe {\n");
+            s.push_str(&format!("                    let ep = &*(self.usb.{epin_f}.as_ptr().add(ep_num).cast::<{epin_ty}>());\n"));
+            s.push_str("                    ep.ptr.write(ptr as u32);\n");
+            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+            s.push_str("                }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn read_data_from_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
+            s.push_str("                if ep_num > 7 || maxcnt > 64 { return; }\n");
+            s.push_str("                unsafe {\n");
+            s.push_str(&format!("                    let ep = &*(self.usb.{epout_f}.as_ptr().add(ep_num).cast::<{epout_ty}>());\n"));
+            s.push_str("                    ep.ptr.write(ptr as u32);\n");
+            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+            s.push_str("                }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn get_endpoint_in_amount(&self, ep_num: usize) -> u32 {\n");
+            s.push_str("                if ep_num > 7 { return 0; }\n");
+            s.push_str(&format!("                unsafe {{ (&*(self.usb.{epin_f}.as_ptr().add(ep_num).cast::<{epin_ty}>())).amount.read() }}\n"));
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn get_endpoint_out_amount(&self, ep_num: usize) -> u32 {\n");
+            s.push_str("                if ep_num > 7 { return 0; }\n");
+            s.push_str(&format!("                unsafe {{ (&*(self.usb.{epout_f}.as_ptr().add(ep_num).cast::<{epout_ty}>())).amount.read() }}\n"));
+            s.push_str("            }\n");
+        } else {
+            s.push_str("            #[repr(C)]\n");
+            s.push_str("            struct HalEpIn { ptr: RW<u32>, maxcnt: RW<u32>, amount: RO<u32>, _r: u32, _r2: u32 }\n");
+            s.push_str("            #[repr(C)]\n");
+            s.push_str("            struct HalEpOut { ptr: RW<u32>, maxcnt: RW<u32>, amount: RO<u32>, _r: u32, _r2: u32 }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn ep0_write_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
+            s.push_str("                if maxcnt > 64 { return; }\n");
+            s.push_str("                unsafe {\n");
+            s.push_str("                    let ep = &*((BASE + 0x800) as *const HalEpIn);\n");
+            s.push_str("                    ep.ptr.write(ptr as u32);\n");
+            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+            s.push_str("                }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn ep0_read_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
+            s.push_str("                if maxcnt > 64 { return; }\n");
+            s.push_str("                unsafe {\n");
+            s.push_str("                    let ep = &*((BASE + 0x900) as *const HalEpOut);\n");
+            s.push_str("                    ep.ptr.write(ptr as u32);\n");
+            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+            s.push_str("                }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
+            s.push_str("                unsafe { (&*((BASE + 0x900) as *const HalEpOut)).amount.read() }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
+            s.push_str("                unsafe { (&*((BASE + 0x800) as *const HalEpIn)).amount.read() }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn write_data_to_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
+            s.push_str("                if ep_num > 7 || maxcnt > 64 { return; }\n");
+            s.push_str("                unsafe {\n");
+            s.push_str("                    let ep = &*((BASE + 0x800 + ep_num * 0x20) as *const HalEpIn);\n");
+            s.push_str("                    ep.ptr.write(ptr as u32);\n");
+            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+            s.push_str("                }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn read_data_from_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
+            s.push_str("                if ep_num > 7 || maxcnt > 64 { return; }\n");
+            s.push_str("                unsafe {\n");
+            s.push_str("                    let ep = &*((BASE + 0x900 + ep_num * 0x20) as *const HalEpOut);\n");
+            s.push_str("                    ep.ptr.write(ptr as u32);\n");
+            s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+            s.push_str("                }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn get_endpoint_in_amount(&self, ep_num: usize) -> u32 {\n");
+            s.push_str("                if ep_num > 7 { return 0; }\n");
+            s.push_str("                unsafe { (&*((BASE + 0x800 + ep_num * 0x20) as *const HalEpIn)).amount.read() }\n");
+            s.push_str("            }\n\n");
+
+            s.push_str("            #[inline(always)]\n");
+            s.push_str("            pub fn get_endpoint_out_amount(&self, ep_num: usize) -> u32 {\n");
+            s.push_str("                if ep_num > 7 { return 0; }\n");
+            s.push_str("                unsafe { (&*((BASE + 0x900 + ep_num * 0x20) as *const HalEpOut)).amount.read() }\n");
+            s.push_str("            }\n");
+        }
+        s.push_str("        }\n");
+
+        s.push_str("    }\n");
+
+        // ---- CDC ACM module (inside the USB module) ----
+        s.push_str(&self.render_cdc_acm());
+
+        Ok(s)
+    }
+
+    fn render_cdc_acm(&self) -> String {
+        let mut s = String::new();
+        s.push_str("    pub mod cdc_acm {\n");
+        s.push_str("        use core::marker::PhantomData;\n\n");
+
+        s.push_str("        #[repr(C, packed)]\n");
+        s.push_str("        #[derive(Copy, Clone, Debug)]\n");
+        s.push_str("        pub struct LineCoding {\n");
+        s.push_str("            pub dw_dte_rate: u32,\n");
+        s.push_str("            pub char_format: u8,\n");
+        s.push_str("            pub parity_type: u8,\n");
+        s.push_str("            pub data_bits: u8,\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl Default for LineCoding {\n");
+        s.push_str("            fn default() -> Self {\n");
+        s.push_str("                Self { dw_dte_rate: 9600, char_format: 0, parity_type: 0, data_bits: 8 }\n");
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        #[derive(Copy, Clone, Debug)]\n");
+        s.push_str("        pub struct ControlLineState {\n");
+        s.push_str("            pub dtr: bool,\n");
+        s.push_str("            pub rts: bool,\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl Default for ControlLineState {\n");
+        s.push_str("            fn default() -> Self {\n");
+        s.push_str("                Self { dtr: false, rts: false }\n");
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        #[derive(Copy, Clone, Debug)]\n");
+        s.push_str("        #[repr(u16)]\n");
+        s.push_str("        pub enum SerialStateBit {\n");
+        s.push_str("            None = 0,\n");
+        s.push_str("            RxCarrier = 1 << 0,\n");
+        s.push_str("            TxCarrier = 1 << 1,\n");
+        s.push_str("            Break = 1 << 2,\n");
+        s.push_str("            RingSignal = 1 << 3,\n");
+        s.push_str("            Framing = 1 << 4,\n");
+        s.push_str("            Parity = 1 << 5,\n");
+        s.push_str("            OverRun = 1 << 6,\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl SerialStateBit {\n");
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn write_data_to_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
-        s.push_str("                if ep_num > 7 || maxcnt > 64 {\n");
-        s.push_str("                    return;\n");
+        s.push_str("            pub fn to_u16(self) -> u16 { self as u16 }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        #[derive(Copy, Clone, Debug)]\n");
+        s.push_str("        pub struct SerialState { bits: u16 }\n\n");
+        s.push_str("        impl Default for SerialState {\n");
+        s.push_str("            fn default() -> Self { Self { bits: 0 } }\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl SerialState {\n");
+        s.push_str("            pub fn new() -> Self { Self { bits: 0 } }\n");
+        s.push_str("            pub fn with_rx_carrier(mut self) -> Self { self.bits |= SerialStateBit::RxCarrier as u16; self }\n");
+        s.push_str("            pub fn with_tx_carrier(mut self) -> Self { self.bits |= SerialStateBit::TxCarrier as u16; self }\n");
+        s.push_str("            pub fn with_break(mut self) -> Self { self.bits |= SerialStateBit::Break as u16; self }\n");
+        s.push_str("            pub fn with_ring_signal(mut self) -> Self { self.bits |= SerialStateBit::RingSignal as u16; self }\n");
+        s.push_str("            pub fn with_framing_error(mut self) -> Self { self.bits |= SerialStateBit::Framing as u16; self }\n");
+        s.push_str("            pub fn with_parity_error(mut self) -> Self { self.bits |= SerialStateBit::Parity as u16; self }\n");
+        s.push_str("            pub fn with_overrun(mut self) -> Self { self.bits |= SerialStateBit::OverRun as u16; self }\n");
+        s.push_str("            #[inline(always)] pub fn to_u16(self) -> u16 { self.bits }\n");
+        s.push_str("            #[inline(always)] pub fn bits(&self) -> u16 { self.bits }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        #[derive(Clone, Debug)]\n");
+        s.push_str("        pub struct CdcAcmConfig {\n");
+        s.push_str("            pub vid: u16,\n");
+        s.push_str("            pub pid: u16,\n");
+        s.push_str("            pub manufacturer: Option<&'static str>,\n");
+        s.push_str("            pub product: Option<&'static str>,\n");
+        s.push_str("            pub serial: Option<&'static str>,\n");
+        s.push_str("            pub max_power_ma: u8,\n");
+        s.push_str("            pub self_powered: bool,\n");
+        s.push_str("            pub remote_wakeup: bool,\n");
+        s.push_str("            pub device_class: u8,\n");
+        s.push_str("            pub device_subclass: u8,\n");
+        s.push_str("            pub device_protocol: u8,\n");
+        s.push_str("            pub data_endpoint_size: u16,\n");
+        s.push_str("            pub notify_endpoint_size: u16,\n");
+        s.push_str("        }\n\n");
+        s.push_str("        impl Default for CdcAcmConfig {\n");
+        s.push_str("            fn default() -> Self {\n");
+        s.push_str("                Self {\n");
+        s.push_str("                    vid: 0x2341, pid: 0x0042,\n");
+        s.push_str("                    manufacturer: Some(\"Vendor\"),\n");
+        s.push_str("                    product: Some(\"USB CDC ACM Device\"),\n");
+        s.push_str("                    serial: Some(\"0001\"),\n");
+        s.push_str("                    max_power_ma: 100, self_powered: true, remote_wakeup: false,\n");
+        s.push_str("                    device_class: 0x02, device_subclass: 0x00, device_protocol: 0x00,\n");
+        s.push_str("                    data_endpoint_size: 64, notify_endpoint_size: 8,\n");
         s.push_str("                }\n");
-        s.push_str("                unsafe {\n");
-        s.push_str(&format!(
-            "                    let ep = &*(self.usb.{}.as_ptr().add(ep_num as usize * 20).cast::<",
-            self.field_epin
-        ));
-        s.push_str("pac::");
-        s.push_str(&self.periph_mod);
-        s.push_str("::Epin>());\n");
-        s.push_str("                    ep.ptr.write(ptr as u32);\n");
-        s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
+        s.push_str("            }\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        pub enum ClassRequestResult { Ack, Stall, SendData(usize), ReceiveData(usize) }\n\n");
+
+        s.push_str("        pub const CDC_ACM_DESCRIPTOR_LEN: usize = 75;\n\n");
+
+        s.push_str("        pub struct CdcAcmConfigurator<'a> {\n");
+        s.push_str("            config: CdcAcmConfig,\n");
+        s.push_str("            line_coding: LineCoding,\n");
+        s.push_str("            control_line_state: ControlLineState,\n");
+        s.push_str("            serial_state: SerialState,\n");
+        s.push_str("            _marker: PhantomData<&'a ()>,\n");
+        s.push_str("        }\n\n");
+
+        s.push_str("        impl<'a> CdcAcmConfigurator<'a> {\n");
+        s.push_str("            pub fn new() -> Self {\n");
+        s.push_str("                Self {\n");
+        s.push_str("                    config: CdcAcmConfig::default(),\n");
+        s.push_str("                    line_coding: LineCoding::default(),\n");
+        s.push_str("                    control_line_state: ControlLineState::default(),\n");
+        s.push_str("                    serial_state: SerialState::new(),\n");
+        s.push_str("                    _marker: PhantomData,\n");
         s.push_str("                }\n");
         s.push_str("            }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn read_data_from_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
-        s.push_str("                if ep_num > 7 || maxcnt > 64 {\n");
-        s.push_str("                    return;\n");
-        s.push_str("                }\n");
-        s.push_str("                unsafe {\n");
-        s.push_str(&format!(
-            "                    let ep = &*(self.usb.{}.as_ptr().add(ep_num as usize * 20).cast::<",
-            self.field_epout
-        ));
-        s.push_str("pac::");
-        s.push_str(&self.periph_mod);
-        s.push_str("::Epout>());\n");
-        s.push_str("                    ep.ptr.write(ptr as u32);\n");
-        s.push_str("                    ep.maxcnt.write(maxcnt as u32);\n");
-        s.push_str("                }\n");
+        s.push_str("            #[inline(always)] pub fn vendor_id(mut self, vid: u16) -> Self { self.config.vid = vid; self }\n");
+        s.push_str("            #[inline(always)] pub fn product_id(mut self, pid: u16) -> Self { self.config.pid = pid; self }\n");
+        s.push_str("            #[inline(always)] pub fn manufacturer(mut self, m: &'static str) -> Self { self.config.manufacturer = Some(m); self }\n");
+        s.push_str("            #[inline(always)] pub fn product(mut self, p: &'static str) -> Self { self.config.product = Some(p); self }\n");
+        s.push_str("            #[inline(always)] pub fn serial_number(mut self, s: &'static str) -> Self { self.config.serial = Some(s); self }\n");
+        s.push_str("            #[inline(always)] pub fn max_power_ma(mut self, ma: u8) -> Self { self.config.max_power_ma = ma; self }\n");
+        s.push_str("            #[inline(always)] pub fn self_powered(mut self, v: bool) -> Self { self.config.self_powered = v; self }\n");
+        s.push_str("            #[inline(always)] pub fn remote_wakeup(mut self, v: bool) -> Self { self.config.remote_wakeup = v; self }\n");
+        s.push_str("            #[inline(always)] pub fn device_class(mut self, c: u8) -> Self { self.config.device_class = c; self }\n");
+        s.push_str("            #[inline(always)] pub fn data_endpoint_size(mut self, sz: u16) -> Self { self.config.data_endpoint_size = sz; self }\n");
+        s.push_str("            #[inline(always)] pub fn notify_endpoint_size(mut self, sz: u16) -> Self { self.config.notify_endpoint_size = sz; self }\n");
+        s.push_str("            #[inline(always)] pub fn line_coding(mut self, lc: LineCoding) -> Self { self.line_coding = lc; self }\n\n");
+
+        s.push_str("            pub fn use_iad(mut self) -> Self {\n");
+        s.push_str("                self.config.device_class = 0xEF;\n");
+        s.push_str("                self.config.device_subclass = 0x02;\n");
+        s.push_str("                self.config.device_protocol = 0x01;\n");
+        s.push_str("                self\n");
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn get_endpoint_in_amount(&self, ep_num: usize) -> u32 {\n");
-        s.push_str("                if ep_num > 7 {\n");
-        s.push_str("                    return 0;\n");
-        s.push_str("                }\n");
-        s.push_str("                unsafe {\n");
-        s.push_str(&format!(
-            "                    (&*(self.usb.{}.as_ptr().add(ep_num as usize * 20).cast::<",
-            self.field_epin
-        ));
-        s.push_str("pac::");
-        s.push_str(&self.periph_mod);
-        s.push_str("::Epin>())).amount.read()\n");
+        s.push_str("            pub fn get_line_coding(&self) -> LineCoding { self.line_coding }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn set_line_coding(&mut self, lc: LineCoding) { self.line_coding = lc; }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn get_control_line_state(&self) -> ControlLineState { self.control_line_state }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn set_control_line_state(&mut self, state: ControlLineState) { self.control_line_state = state; }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn get_serial_state(&self) -> SerialState { self.serial_state }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn set_serial_state(&mut self, state: SerialState) { self.serial_state = state; }\n\n");
+
+        s.push_str("            #[inline(always)]\n");
+        s.push_str("            pub fn is_class_request(_bm_request_type: u8, b_request: u8) -> bool {\n");
+        s.push_str("                matches!(b_request, 0x00 | 0x01 | 0x20 | 0x21 | 0x22 | 0x23)\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            pub fn handle_class_request(\n");
+        s.push_str("                &mut self, _bm_request_type: u8, b_request: u8,\n");
+        s.push_str("                w_value: u16, _w_index: u16, _w_length: u16,\n");
+        s.push_str("                data: Option<&mut [u8]>,\n");
+        s.push_str("            ) -> ClassRequestResult {\n");
+        s.push_str("                match b_request {\n");
+        s.push_str("                    0x20 => {\n");
+        s.push_str("                        if let Some(buf) = data {\n");
+        s.push_str("                            if buf.len() >= 7 {\n");
+        s.push_str("                                let dw_dte_rate = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);\n");
+        s.push_str("                                self.line_coding = LineCoding {\n");
+        s.push_str("                                    dw_dte_rate, char_format: buf[4],\n");
+        s.push_str("                                    parity_type: buf[5], data_bits: buf[6],\n");
+        s.push_str("                                };\n");
+        s.push_str("                                ClassRequestResult::Ack\n");
+        s.push_str("                            } else { ClassRequestResult::Stall }\n");
+        s.push_str("                        } else { ClassRequestResult::Stall }\n");
+        s.push_str("                    }\n");
+        s.push_str("                    0x21 => {\n");
+        s.push_str("                        if let Some(buf) = data {\n");
+        s.push_str("                            if buf.len() >= 7 {\n");
+        s.push_str("                                buf[0..4].copy_from_slice(&self.line_coding.dw_dte_rate.to_le_bytes());\n");
+        s.push_str("                                buf[4] = self.line_coding.char_format;\n");
+        s.push_str("                                buf[5] = self.line_coding.parity_type;\n");
+        s.push_str("                                buf[6] = self.line_coding.data_bits;\n");
+        s.push_str("                                ClassRequestResult::SendData(7)\n");
+        s.push_str("                            } else { ClassRequestResult::Stall }\n");
+        s.push_str("                        } else { ClassRequestResult::Stall }\n");
+        s.push_str("                    }\n");
+        s.push_str("                    0x22 => {\n");
+        s.push_str("                        self.control_line_state = ControlLineState {\n");
+        s.push_str("                            dtr: (w_value & 0x01) != 0,\n");
+        s.push_str("                            rts: (w_value & 0x02) != 0,\n");
+        s.push_str("                        };\n");
+        s.push_str("                        ClassRequestResult::Ack\n");
+        s.push_str("                    }\n");
+        s.push_str("                    0x00 | 0x01 | 0x23 => ClassRequestResult::Ack,\n");
+        s.push_str("                    _ => ClassRequestResult::Stall,\n");
         s.push_str("                }\n");
         s.push_str("            }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn get_endpoint_out_amount(&self, ep_num: usize) -> u32 {\n");
-        s.push_str("                if ep_num > 7 {\n");
-        s.push_str("                    return 0;\n");
+        s.push_str("            pub fn build_descriptor(&self) -> [u8; CDC_ACM_DESCRIPTOR_LEN] {\n");
+        s.push_str("                let mut desc = [0u8; CDC_ACM_DESCRIPTOR_LEN];\n");
+        s.push_str("                let mut off = 0;\n");
+        s.push_str("                let total_len = CDC_ACM_DESCRIPTOR_LEN as u16;\n");
+        s.push_str("                let mut bm_attrs = 0x80u8;\n");
+        s.push_str("                if self.config.self_powered { bm_attrs |= 0x40; }\n");
+        s.push_str("                if self.config.remote_wakeup { bm_attrs |= 0x20; }\n");
+        s.push_str("                let max_power = self.config.max_power_ma / 2;\n\n");
+
+        s.push_str("                desc[off..off + 9].copy_from_slice(&[\n");
+        s.push_str("                    0x09, 0x02, (total_len & 0xFF) as u8, ((total_len >> 8) & 0xFF) as u8,\n");
+        s.push_str("                    2, 1, 0x00, bm_attrs, max_power,\n");
+        s.push_str("                ]);\n");
+        s.push_str("                off += 9;\n\n");
+
+        s.push_str("                desc[off..off + 8].copy_from_slice(&[\n");
+        s.push_str("                    0x08, 0x0B, 0x00, 0x02, 0x02, 0x02, 0x01, 0x00,\n");
+        s.push_str("                ]);\n");
+        s.push_str("                off += 8;\n\n");
+
+        s.push_str("                desc[off..off + 9].copy_from_slice(&[\n");
+        s.push_str("                    0x09, 0x04, 0x00, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00,\n");
+        s.push_str("                ]);\n");
+        s.push_str("                off += 9;\n\n");
+
+        s.push_str("                desc[off..off + 5].copy_from_slice(&[0x05, 0x24, 0x00, 0x10, 0x01]);\n");
+        s.push_str("                off += 5;\n\n");
+
+        s.push_str("                desc[off..off + 4].copy_from_slice(&[0x04, 0x24, 0x02, 0x02]);\n");
+        s.push_str("                off += 4;\n\n");
+
+        s.push_str("                desc[off..off + 5].copy_from_slice(&[0x05, 0x24, 0x06, 0x00, 0x01]);\n");
+        s.push_str("                off += 5;\n\n");
+
+        s.push_str("                desc[off..off + 5].copy_from_slice(&[0x05, 0x24, 0x01, 0x00, 0x01]);\n");
+        s.push_str("                off += 5;\n\n");
+
+        s.push_str("                desc[off..off + 7].copy_from_slice(&[\n");
+        s.push_str("                    0x07, 0x05, 0x81, 0x03,\n");
+        s.push_str("                    (self.config.notify_endpoint_size & 0xFF) as u8,\n");
+        s.push_str("                    ((self.config.notify_endpoint_size >> 8) & 0xFF) as u8,\n");
+        s.push_str("                    0x10,\n");
+        s.push_str("                ]);\n");
+        s.push_str("                off += 7;\n\n");
+
+        s.push_str("                desc[off..off + 9].copy_from_slice(&[\n");
+        s.push_str("                    0x09, 0x04, 0x01, 0x00, 0x02, 0x0A, 0x00, 0x00, 0x00,\n");
+        s.push_str("                ]);\n");
+        s.push_str("                off += 9;\n\n");
+
+        s.push_str("                desc[off..off + 7].copy_from_slice(&[\n");
+        s.push_str("                    0x07, 0x05, 0x82, 0x02,\n");
+        s.push_str("                    (self.config.data_endpoint_size & 0xFF) as u8,\n");
+        s.push_str("                    ((self.config.data_endpoint_size >> 8) & 0xFF) as u8,\n");
+        s.push_str("                    0x00,\n");
+        s.push_str("                ]);\n");
+        s.push_str("                off += 7;\n\n");
+
+        s.push_str("                desc[off..off + 7].copy_from_slice(&[\n");
+        s.push_str("                    0x07, 0x05, 0x03, 0x02,\n");
+        s.push_str("                    (self.config.data_endpoint_size & 0xFF) as u8,\n");
+        s.push_str("                    ((self.config.data_endpoint_size >> 8) & 0xFF) as u8,\n");
+        s.push_str("                    0x00,\n");
+        s.push_str("                ]);\n\n");
+
+        s.push_str("                desc\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            pub fn device_descriptor(&self) -> [u8; 18] {\n");
+        s.push_str("                let mut desc = [0u8; 18];\n");
+        s.push_str("                desc[0] = 18; desc[1] = 0x01; desc[2] = 0x00; desc[3] = 0x02;\n");
+        s.push_str("                desc[4] = self.config.device_class;\n");
+        s.push_str("                desc[5] = self.config.device_subclass;\n");
+        s.push_str("                desc[6] = self.config.device_protocol;\n");
+        s.push_str("                desc[7] = 64;\n");
+        s.push_str("                desc[8] = (self.config.vid & 0xFF) as u8;\n");
+        s.push_str("                desc[9] = ((self.config.vid >> 8) & 0xFF) as u8;\n");
+        s.push_str("                desc[10] = (self.config.pid & 0xFF) as u8;\n");
+        s.push_str("                desc[11] = ((self.config.pid >> 8) & 0xFF) as u8;\n");
+        s.push_str("                desc[12] = 0x00; desc[13] = 0x01;\n");
+        s.push_str("                desc[14] = 0x00; desc[15] = 0x00;\n");
+        s.push_str("                desc[16] = 0x00; desc[17] = 0x00;\n");
+        s.push_str("                desc\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            pub fn string_descriptor_index(&self, index: u8) -> Option<&'static str> {\n");
+        s.push_str("                match index {\n");
+        s.push_str("                    0 => Some(\"\"),\n");
+        s.push_str("                    1 => self.config.manufacturer,\n");
+        s.push_str("                    2 => self.config.product,\n");
+        s.push_str("                    3 => self.config.serial,\n");
+        s.push_str("                    _ => None,\n");
         s.push_str("                }\n");
-        s.push_str("                unsafe {\n");
-        s.push_str(&format!(
-            "                    (&*(self.usb.{}.as_ptr().add(ep_num as usize * 20).cast::<",
-            self.field_epout
-        ));
-        s.push_str("pac::");
-        s.push_str(&self.periph_mod);
-        s.push_str("::Epout>())).amount.read()\n");
-        s.push_str("                }\n");
+        s.push_str("            }\n\n");
+
+        s.push_str("            pub fn serial_state_notification_packet(&self, state: SerialState) -> [u8; 10] {\n");
+        s.push_str("                let mut pkt = [0u8; 10];\n");
+        s.push_str("                pkt[0] = 0xA1; pkt[1] = 0x20;\n");
+        s.push_str("                pkt[6] = 0x02;\n");
+        s.push_str("                pkt[8] = (state.bits() & 0xFF) as u8;\n");
+        s.push_str("                pkt[9] = ((state.bits() >> 8) & 0xFF) as u8;\n");
+        s.push_str("                pkt\n");
         s.push_str("            }\n");
         s.push_str("        }\n");
 
         s.push_str("    }\n");
-        Ok(s)
+        s
     }
 }
 
@@ -1136,7 +1463,7 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
         let Some((epouten_name, _)) = gpio::find_register(items, "EPOUTEN") else {
             continue;
         };
-        let Some((tasks_startein_name, _)) = gpio::find_register(items, "TASKS_STARTEIN") else {
+        let Some((tasks_startein_name, _)) = gpio::find_register(items, "TASKS_STARTEPIN") else {
             continue;
         };
         let Some((tasks_staroutep_name, _)) = gpio::find_register(items, "TASKS_STARTEPOUT") else {
@@ -1168,12 +1495,9 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
         else {
             continue;
         };
-        let Some((epin_name, _)) = gpio::find_register(items, "EPIN") else {
-            continue;
-        };
-        let Some((epout_name, _)) = gpio::find_register(items, "EPOUT") else {
-            continue;
-        };
+        let epin_name = gpio::find_register_prefer_exact(items, "EPIN");
+        let epout_name = gpio::find_register_prefer_exact(items, "EPOUT");
+        let has_ep_arrays = epin_name.is_some() && epout_name.is_some();
 
         out.push(UsbInfo {
             periph_name: p.name.clone(),
@@ -1199,8 +1523,9 @@ pub fn collect_usb_devices(device: &svd::Device) -> Vec<UsbInfo> {
             field_tasks_startepout: gpio::sanitize_field_name(&tasks_startepout_name),
             field_events_endepin_array: gpio::sanitize_field_name(&events_endepin_name),
             field_events_endepout_array: gpio::sanitize_field_name(&events_endepout_name),
-            field_epin: gpio::sanitize_field_name(&epin_name),
-            field_epout: gpio::sanitize_field_name(&epout_name),
+            field_epin: epin_name.map(|(n, _)| gpio::sanitize_field_name(&n)),
+            field_epout: epout_name.map(|(n, _)| gpio::sanitize_field_name(&n)),
+            has_ep_arrays,
         });
     }
     out
