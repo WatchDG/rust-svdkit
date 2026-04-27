@@ -1,5 +1,5 @@
-use super::super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};
 use super::super::super::macros::*;
+use super::super::super::types::{RW, RO, W1S, W1C};
 
 /// Register `OUT`
 /// Write GPIO port

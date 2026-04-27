@@ -769,8 +769,6 @@ fn generate_peripheral_file(
     let has_registers = !register_items.is_empty();
 
     if has_registers {
-        regs_out
-            .writeln("use super::super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
         regs_out.writeln("use super::super::super::macros::*;")?;
         regs_out.writeln("")?;
     }
@@ -941,6 +939,25 @@ fn generate_peripheral_file(
     } else {
         mod_out.writeln("#[repr(C)]")?;
         mod_out.writeln("pub struct RegisterBlock;")?;
+    }
+
+    {
+        let types_s = &regs_out.s;
+        let all_types = ["RW", "RO", "WO", "W1S", "W1C", "W0S", "W0C", "WT"];
+        let used: Vec<&str> = all_types
+            .iter()
+            .filter(|t| types_s.contains(&format!("{t}<")))
+            .copied()
+            .collect();
+        if !used.is_empty() {
+            let import = format!("use super::super::super::types::{{{}}};", used.join(", "));
+            let pos = regs_out
+                .s
+                .find("macros::*;\n")
+                .map(|p| p + "macros::*;\n".len())
+                .unwrap_or(0);
+            regs_out.s.insert_str(pos, &format!("{}\n", import));
+        }
     }
 
     Ok((
