@@ -820,7 +820,6 @@ fn generate_peripheral_file(
         mod_out.writeln("use super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
         if has_registers {
             mod_out.writeln("pub mod registers;")?;
-            mod_out.writeln("use registers::*;")?;
         }
         mod_out.writeln("")?;
 
@@ -1072,7 +1071,6 @@ fn generate_cluster_files(
         "use crate::{crate_name}::peripherals::{periph_name}::enums;"
     ))?;
     mod_out.writeln("pub mod registers;")?;
-    mod_out.writeln("use registers::*;")?;
     mod_out.writeln("")?;
 
     mod_out.writeln("#[repr(C)]")?;
@@ -1892,10 +1890,11 @@ fn emit_register_field(
     let (base_ty, size_bytes) = reg_primitive_ty_and_size(ctx, &r.properties);
     let access = resolve_access(ctx, r);
     let reg_ty = register_wrapper_type(st, type_defs, ctx, r, &base_ty, access, options)?;
+    let path_ty = format!("registers::{reg_ty}");
     if let Some(dim) = &r.dim {
         if dim.dim_increment == size_bytes {
             out.writeln(&format!(
-                "pub {field_name}: [{reg_ty}; {n} as usize],",
+                "pub {field_name}: [{path_ty}; {n} as usize],",
                 n = dim.dim
             ))?;
         } else {
@@ -1907,7 +1906,7 @@ fn emit_register_field(
             out.writeln(&format!("pub {field_name}: [u8; {total} as usize],"))?;
         }
     } else {
-        out.writeln(&format!("pub {field_name}: {reg_ty},"))?;
+        out.writeln(&format!("pub {field_name}: {path_ty},"))?;
     }
     Ok(())
 }
