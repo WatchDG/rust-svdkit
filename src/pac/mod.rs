@@ -655,10 +655,16 @@ pub fn generate_device_dir_with_options(
                         "pub mod registers;",
                         "pub mod registers;\npub mod clusters;",
                     );
-                } else {
+                } else if mod_file.content.contains("use self::enums as field_enums;") {
                     mod_file.content = mod_file.content.replacen(
                         "use self::enums as field_enums;",
                         "use self::enums as field_enums;\n\npub mod clusters;",
+                        1,
+                    );
+                } else if mod_file.content.contains("pub mod enums;\n") {
+                    mod_file.content = mod_file.content.replacen(
+                        "pub mod enums;\n",
+                        "pub mod enums;\n\npub mod clusters;\n",
                         1,
                     );
                 }
@@ -1033,20 +1039,16 @@ fn generate_cluster_files(
     let mut regs_out = CodeWriter::new();
     let mut type_defs = CodeWriter::new();
 
-    let crate_name = format!("{}_pac", sanitize_file_stem(&ctx.device.name));
-
-    let periph_name = ctx
-        .periph
-        .map(|p| sanitize_module_name(&p.name.to_lowercase()))
-        .unwrap_or_default();
+    let regs_enums_prefix = "super::".repeat(3 + 2 * depth);
+    let regs_root_prefix = "super::".repeat(5 + 2 * depth);
 
     regs_out.writeln(&format!(
-        "use crate::{crate_name}::peripherals::{periph_name}::enums as field_enums;"
+        "use {regs_enums_prefix}enums as field_enums;"
     ))?;
     regs_out.writeln(&format!(
-        "use crate::{crate_name}::types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT}};"
+        "use {regs_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT}};"
     ))?;
-    regs_out.writeln(&format!("use crate::{crate_name}::macros::*;"))?;
+    regs_out.writeln(&format!("use {regs_root_prefix}macros::*;"))?;
     regs_out.writeln("")?;
 
     mod_out.writeln("#[allow(non_snake_case)]")?;
@@ -1083,12 +1085,15 @@ fn generate_cluster_files(
         type_defs.s.clear();
     }
 
+    let mod_enums_prefix = "super::".repeat(2 + 2 * depth);
+    let mod_root_prefix = "super::".repeat(4 + 2 * depth);
+
     mod_out.writeln(&format!(
-        "use crate::{crate_name}::types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written}};"
+        "use {mod_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written}};"
     ))?;
-    mod_out.writeln(&format!("use crate::{crate_name}::macros;"))?;
+    mod_out.writeln(&format!("use {mod_root_prefix}macros;"))?;
     mod_out.writeln(&format!(
-        "use crate::{crate_name}::peripherals::{periph_name}::enums;"
+        "use {mod_enums_prefix}enums;"
     ))?;
     mod_out.writeln("pub mod registers;")?;
     mod_out.writeln("")?;
