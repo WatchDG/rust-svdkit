@@ -990,51 +990,79 @@ impl UsbInfo {
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_write_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
             s.push_str("                if maxcnt > 64 { return; }\n");
-            s.push_str(&format!("                self.usb.{epin_f}[0].ptr.write(ptr as u32);\n"));
-            s.push_str(&format!("                self.usb.{epin_f}[0].maxcnt.write(maxcnt as u32);\n"));
+            s.push_str(&format!(
+                "                self.usb.{epin_f}[0].ptr.write(ptr as u32);\n"
+            ));
+            s.push_str(&format!(
+                "                self.usb.{epin_f}[0].maxcnt.write(maxcnt as u32);\n"
+            ));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_read_data(&self, ptr: *mut u8, maxcnt: usize) {\n");
             s.push_str("                if maxcnt > 64 { return; }\n");
-            s.push_str(&format!("                self.usb.{epout_f}[0].ptr.write(ptr as u32);\n"));
-            s.push_str(&format!("                self.usb.{epout_f}[0].maxcnt.write(maxcnt as u32);\n"));
+            s.push_str(&format!(
+                "                self.usb.{epout_f}[0].ptr.write(ptr as u32);\n"
+            ));
+            s.push_str(&format!(
+                "                self.usb.{epout_f}[0].maxcnt.write(maxcnt as u32);\n"
+            ));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_get_read_count(&self) -> u32 {\n");
-            s.push_str(&format!("                self.usb.{epout_f}[0].amount.read()\n"));
+            s.push_str(&format!(
+                "                self.usb.{epout_f}[0].amount.read()\n"
+            ));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
-            s.push_str(&format!("                self.usb.{epin_f}[0].amount.read()\n"));
+            s.push_str(&format!(
+                "                self.usb.{epin_f}[0].amount.read()\n"
+            ));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn write_data_to_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
             s.push_str("                if ep_num > 7 || maxcnt > 64 { return; }\n");
-            s.push_str(&format!("                self.usb.{epin_f}[ep_num].ptr.write(ptr as u32);\n"));
-            s.push_str(&format!("                self.usb.{epin_f}[ep_num].maxcnt.write(maxcnt as u32);\n"));
+            s.push_str(&format!(
+                "                self.usb.{epin_f}[ep_num].ptr.write(ptr as u32);\n"
+            ));
+            s.push_str(&format!(
+                "                self.usb.{epin_f}[ep_num].maxcnt.write(maxcnt as u32);\n"
+            ));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn read_data_from_endpoint(&self, ep_num: usize, ptr: *mut u8, maxcnt: usize) {\n");
             s.push_str("                if ep_num > 7 || maxcnt > 64 { return; }\n");
-            s.push_str(&format!("                self.usb.{epout_f}[ep_num].ptr.write(ptr as u32);\n"));
-            s.push_str(&format!("                self.usb.{epout_f}[ep_num].maxcnt.write(maxcnt as u32);\n"));
+            s.push_str(&format!(
+                "                self.usb.{epout_f}[ep_num].ptr.write(ptr as u32);\n"
+            ));
+            s.push_str(&format!(
+                "                self.usb.{epout_f}[ep_num].maxcnt.write(maxcnt as u32);\n"
+            ));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
-            s.push_str("            pub fn get_endpoint_in_amount(&self, ep_num: usize) -> u32 {\n");
+            s.push_str(
+                "            pub fn get_endpoint_in_amount(&self, ep_num: usize) -> u32 {\n",
+            );
             s.push_str("                if ep_num > 7 { return 0; }\n");
-            s.push_str(&format!("                self.usb.{epin_f}[ep_num].amount.read()\n"));
+            s.push_str(&format!(
+                "                self.usb.{epin_f}[ep_num].amount.read()\n"
+            ));
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
-            s.push_str("            pub fn get_endpoint_out_amount(&self, ep_num: usize) -> u32 {\n");
+            s.push_str(
+                "            pub fn get_endpoint_out_amount(&self, ep_num: usize) -> u32 {\n",
+            );
             s.push_str("                if ep_num > 7 { return 0; }\n");
-            s.push_str(&format!("                self.usb.{epout_f}[ep_num].amount.read()\n"));
+            s.push_str(&format!(
+                "                self.usb.{epout_f}[ep_num].amount.read()\n"
+            ));
             s.push_str("            }\n");
         } else {
             s.push_str("            #[repr(C)]\n");
@@ -1069,7 +1097,9 @@ impl UsbInfo {
 
             s.push_str("            #[inline(always)]\n");
             s.push_str("            pub fn ep0_get_write_count(&self) -> u32 {\n");
-            s.push_str("                unsafe { (&*((BASE + 0x800) as *const HalEpIn)).amount.read() }\n");
+            s.push_str(
+                "                unsafe { (&*((BASE + 0x800) as *const HalEpIn)).amount.read() }\n",
+            );
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
@@ -1093,13 +1123,17 @@ impl UsbInfo {
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
-            s.push_str("            pub fn get_endpoint_in_amount(&self, ep_num: usize) -> u32 {\n");
+            s.push_str(
+                "            pub fn get_endpoint_in_amount(&self, ep_num: usize) -> u32 {\n",
+            );
             s.push_str("                if ep_num > 7 { return 0; }\n");
             s.push_str("                unsafe { (&*((BASE + 0x800 + ep_num * 0x20) as *const HalEpIn)).amount.read() }\n");
             s.push_str("            }\n\n");
 
             s.push_str("            #[inline(always)]\n");
-            s.push_str("            pub fn get_endpoint_out_amount(&self, ep_num: usize) -> u32 {\n");
+            s.push_str(
+                "            pub fn get_endpoint_out_amount(&self, ep_num: usize) -> u32 {\n",
+            );
             s.push_str("                if ep_num > 7 { return 0; }\n");
             s.push_str("                unsafe { (&*((BASE + 0x900 + ep_num * 0x20) as *const HalEpOut)).amount.read() }\n");
             s.push_str("            }\n");
@@ -1202,7 +1236,9 @@ impl UsbInfo {
         s.push_str("                    manufacturer: Some(\"Vendor\"),\n");
         s.push_str("                    product: Some(\"USB CDC ACM Device\"),\n");
         s.push_str("                    serial: Some(\"0001\"),\n");
-        s.push_str("                    max_power_ma: 100, self_powered: true, remote_wakeup: false,\n");
+        s.push_str(
+            "                    max_power_ma: 100, self_powered: true, remote_wakeup: false,\n",
+        );
         s.push_str("                    device_class: 0x02, device_subclass: 0x00, device_protocol: 0x00,\n");
         s.push_str("                    data_endpoint_size: 64, notify_endpoint_size: 8,\n");
         s.push_str("                }\n");
@@ -1253,7 +1289,9 @@ impl UsbInfo {
         s.push_str("            }\n\n");
 
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn get_line_coding(&self) -> LineCoding { self.line_coding }\n\n");
+        s.push_str(
+            "            pub fn get_line_coding(&self) -> LineCoding { self.line_coding }\n\n",
+        );
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn set_line_coding(&mut self, lc: LineCoding) { self.line_coding = lc; }\n\n");
@@ -1265,14 +1303,20 @@ impl UsbInfo {
         s.push_str("            pub fn set_control_line_state(&mut self, state: ControlLineState) { self.control_line_state = state; }\n\n");
 
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn get_serial_state(&self) -> SerialState { self.serial_state }\n\n");
+        s.push_str(
+            "            pub fn get_serial_state(&self) -> SerialState { self.serial_state }\n\n",
+        );
 
         s.push_str("            #[inline(always)]\n");
         s.push_str("            pub fn set_serial_state(&mut self, state: SerialState) { self.serial_state = state; }\n\n");
 
         s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn is_class_request(_bm_request_type: u8, b_request: u8) -> bool {\n");
-        s.push_str("                matches!(b_request, 0x00 | 0x01 | 0x20 | 0x21 | 0x22 | 0x23)\n");
+        s.push_str(
+            "            pub fn is_class_request(_bm_request_type: u8, b_request: u8) -> bool {\n",
+        );
+        s.push_str(
+            "                matches!(b_request, 0x00 | 0x01 | 0x20 | 0x21 | 0x22 | 0x23)\n",
+        );
         s.push_str("            }\n\n");
 
         s.push_str("            pub fn handle_class_request(\n");
@@ -1316,7 +1360,9 @@ impl UsbInfo {
         s.push_str("                }\n");
         s.push_str("            }\n\n");
 
-        s.push_str("            pub fn build_descriptor(&self) -> [u8; CDC_ACM_DESCRIPTOR_LEN] {\n");
+        s.push_str(
+            "            pub fn build_descriptor(&self) -> [u8; CDC_ACM_DESCRIPTOR_LEN] {\n",
+        );
         s.push_str("                let mut desc = [0u8; CDC_ACM_DESCRIPTOR_LEN];\n");
         s.push_str("                let mut off = 0;\n");
         s.push_str("                let total_len = CDC_ACM_DESCRIPTOR_LEN as u16;\n");
@@ -1344,7 +1390,9 @@ impl UsbInfo {
         s.push_str("                desc[off..off + 5].copy_from_slice(&[0x05, 0x24, 0x00, 0x10, 0x01]);\n");
         s.push_str("                off += 5;\n\n");
 
-        s.push_str("                desc[off..off + 4].copy_from_slice(&[0x04, 0x24, 0x02, 0x02]);\n");
+        s.push_str(
+            "                desc[off..off + 4].copy_from_slice(&[0x04, 0x24, 0x02, 0x02]);\n",
+        );
         s.push_str("                off += 4;\n\n");
 
         s.push_str("                desc[off..off + 5].copy_from_slice(&[0x05, 0x24, 0x06, 0x00, 0x01]);\n");
@@ -1386,7 +1434,9 @@ impl UsbInfo {
 
         s.push_str("            pub fn device_descriptor(&self) -> [u8; 18] {\n");
         s.push_str("                let mut desc = [0u8; 18];\n");
-        s.push_str("                desc[0] = 18; desc[1] = 0x01; desc[2] = 0x00; desc[3] = 0x02;\n");
+        s.push_str(
+            "                desc[0] = 18; desc[1] = 0x01; desc[2] = 0x00; desc[3] = 0x02;\n",
+        );
         s.push_str("                desc[4] = self.config.device_class;\n");
         s.push_str("                desc[5] = self.config.device_subclass;\n");
         s.push_str("                desc[6] = self.config.device_protocol;\n");
