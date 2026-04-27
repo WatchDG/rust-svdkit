@@ -694,6 +694,39 @@ pub fn generate_device_dir_with_options(
         }
     }
 
+    let lib_rs_content = {
+        let mut lines = Vec::new();
+        lines.push("#![no_std]".to_string());
+        lines.push("".to_string());
+        lines.push("pub mod traits;".to_string());
+        lines.push("pub mod types;".to_string());
+        lines.push("pub mod enums;".to_string());
+        lines.push("pub mod constants;".to_string());
+        lines.push("pub mod macros;".to_string());
+        lines.push("pub mod peripherals;".to_string());
+        lines.join("\n")
+    };
+    files.push(GeneratedFile {
+        file_name: "lib.rs".to_string(),
+        content: lib_rs_content,
+    });
+
+    let cargo_toml_content = {
+        let mut lines = Vec::new();
+        lines.push("[package]".to_string());
+        lines.push(format!("name = {:?}", dir_name));
+        lines.push("version = \"0.1.0\"".to_string());
+        lines.push("edition = \"2024\"".to_string());
+        lines.push(format!("description = \"PAC for {}\"", device.name));
+        lines.push("".to_string());
+        lines.push("[dependencies]".to_string());
+        lines.join("\n")
+    };
+    files.push(GeneratedFile {
+        file_name: "Cargo.toml".to_string(),
+        content: cargo_toml_content,
+    });
+
     Ok(GeneratedDir {
         path: dir_name,
         files,
@@ -943,16 +976,20 @@ fn generate_cluster_files(
     let mut regs_out = CodeWriter::new();
     let mut type_defs = CodeWriter::new();
 
+    let crate_name = format!("{}_pac", sanitize_file_stem(&ctx.device.name));
+
     let periph_name = ctx
         .periph
         .map(|p| sanitize_module_name(&p.name.to_lowercase()))
         .unwrap_or_default();
 
     regs_out.writeln(&format!(
-        "use crate::nrf52840_pac::peripherals::{periph_name}::enums as field_enums;"
+        "use crate::{crate_name}::peripherals::{periph_name}::enums as field_enums;"
     ))?;
-    regs_out.writeln("use crate::nrf52840_pac::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT};")?;
-    regs_out.writeln("use crate::nrf52840_pac::macros::*;")?;
+    regs_out.writeln(&format!(
+        "use crate::{crate_name}::types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT}};"
+    ))?;
+    regs_out.writeln(&format!("use crate::{crate_name}::macros::*;"))?;
     regs_out.writeln("")?;
 
     mod_out.writeln("#[allow(non_snake_case)]")?;
@@ -989,10 +1026,12 @@ fn generate_cluster_files(
         type_defs.s.clear();
     }
 
-    mod_out.writeln("use crate::nrf52840_pac::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
-    mod_out.writeln("use crate::nrf52840_pac::macros;")?;
     mod_out.writeln(&format!(
-        "use crate::nrf52840_pac::peripherals::{periph_name}::enums;"
+        "use crate::{crate_name}::types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written}};"
+    ))?;
+    mod_out.writeln(&format!("use crate::{crate_name}::macros;"))?;
+    mod_out.writeln(&format!(
+        "use crate::{crate_name}::peripherals::{periph_name}::enums;"
     ))?;
     mod_out.writeln("pub mod registers;")?;
     mod_out.writeln("use registers::*;")?;
@@ -2226,6 +2265,64 @@ fn resolve_modified_write_values(
     }
 }
 
+fn resolve_write_constraint_range(
+    ctx: &Ctx<'_>,
+    r: &svd::Register,
+    f: &svd::Field,
+) -> Option<(u64, u64)> {
+    if let Some(svd::WriteConstraint::Range { minimum, maximum }) = &f.write_constraint {
+        return Some((*minimum, *maximum));
+    }
+    let mut cur = r;
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    loop {
+        if let Some(svd::WriteConstraint::Range { minimum, maximum }) = &cur.write_constraint {
+            return Some((*minimum, *maximum));
+        }
+        let Some(df) = cur.derived_from.as_deref() else {
+            return None;
+        };
+        let cur_key = ctx_reg_path(ctx, &cur.name);
+        if !seen.insert(cur_key) {
+            return None;
+        }
+        let Some(next) = find_register_in_ctx(ctx, df) else {
+            return None;
+        };
+        cur = next;
+    }
+}
+
+fn resolve_use_enumerated_values(ctx: &Ctx<'_>, r: &svd::Register, f: &svd::Field) -> bool {
+    if let Some(svd::WriteConstraint::UseEnumeratedValues {
+        use_enumerated_values: true,
+    }) = &f.write_constraint
+    {
+        return true;
+    }
+    let mut cur = r;
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    loop {
+        if let Some(svd::WriteConstraint::UseEnumeratedValues {
+            use_enumerated_values: true,
+        }) = &cur.write_constraint
+        {
+            return true;
+        }
+        let Some(df) = cur.derived_from.as_deref() else {
+            return false;
+        };
+        let cur_key = ctx_reg_path(ctx, &cur.name);
+        if !seen.insert(cur_key) {
+            return false;
+        }
+        let Some(next) = find_register_in_ctx(ctx, df) else {
+            return false;
+        };
+        cur = next;
+    }
+}
+
 fn find_register_in_ctx<'a>(ctx: &Ctx<'a>, derived_from: &str) -> Option<&'a svd::Register> {
     let Some(p) = ctx.periph else {
         return None;
@@ -3103,6 +3200,9 @@ fn register_wrapper_type(
                         format!("set_{method_base}_write")
                     };
                     out.writeln("")?;
+                    if resolve_use_enumerated_values(ctx, r, f) && !f.enumerated_values.is_empty() {
+                        out.writeln("/// Write value must be one of the enumerated values.")?;
+                    }
                     out.writeln("#[inline(always)]")?;
                     out.writeln(&format!(
                         "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{"
@@ -3110,6 +3210,9 @@ fn register_wrapper_type(
                     out.indent();
                     out.writeln(&format!("let cur = self.read() as u64;"))?;
                     out.writeln(&format!("let v = (v.bits() as u64) & 0x{mask:X}u64;"))?;
+                    if let Some((min, max)) = resolve_write_constraint_range(ctx, r, f) {
+                        out.writeln(&format!("debug_assert!(v >= {min}u64 && v <= {max}u64, \"field value {{}} out of allowed range [{min}:{max}]\", v);"))?;
+                    }
                     if lsb == 0 {
                         out.writeln(&format!("let new = (cur & !0x{mask:X}u64) | v;"))?;
                     } else {
@@ -3190,11 +3293,18 @@ fn register_wrapper_type(
                         out.indent();
                     }
                     out.writeln("")?;
+                    if resolve_use_enumerated_values(ctx, r, f) && !f.enumerated_values.is_empty() {
+                        out.writeln("/// Write value must be one of the enumerated values.")?;
+                    }
                     out.writeln("#[inline(always)]")?;
                     out.writeln(&format!(
                         "pub fn {method_name}(&self, v: field_enums::{enum_ty}) {{"
                     ))?;
                     out.indent();
+                    if let Some((min, max)) = resolve_write_constraint_range(ctx, r, f) {
+                        out.writeln("let _v_bits = v.bits() as u64;")?;
+                        out.writeln(&format!("debug_assert!(_v_bits >= {min}u64 && _v_bits <= {max}u64, \"field value {{}} out of allowed range [{min}:{max}]\", _v_bits);"))?;
+                    }
                     if call == "write" && lsb == 0 && (width as u64) == reg_bits {
                         out.writeln(&format!("self.write(v.bits() as {base_ty});"))?;
                     } else if lsb == 0 {
