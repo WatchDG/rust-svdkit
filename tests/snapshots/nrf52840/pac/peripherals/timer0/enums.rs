@@ -1,6 +1,6 @@
 define_enum!(
     #[doc = "nrf52840.BITMODE :: field `BITMODE`"]
-    Timer0Bitmode : u8,
+    Bitmode : u8,
     #[doc = "16 bit timer bit width"]
     _16bit = 0,
     #[doc = "8 bit timer bit width"]
@@ -13,7 +13,7 @@ define_enum!(
 
 define_enum!(
     #[doc = "nrf52840.EVENTS_COMPARE[%s] :: field `EVENTS_COMPARE`"]
-    Timer0EventsCompare : u8,
+    EventsCompare : u8,
     #[doc = "Event not generated"]
     NotGenerated = 0,
     #[doc = "Event generated"]
@@ -22,7 +22,7 @@ define_enum!(
 
 define_enum!(
     #[doc = "nrf52840.INTENCLR :: field `COMPARE0`"]
-    ReadTimer0IntEnClrCompare : u8,
+    ReadIntEnClrCompare : u8,
     #[doc = "Read: Disabled"]
     Disabled = 0,
     #[doc = "Read: Enabled"]
@@ -31,14 +31,14 @@ define_enum!(
 
 define_enum!(
     #[doc = "nrf52840.INTENCLR :: field `COMPARE0`"]
-    WriteTimer0IntEnClrCompare : u8,
+    WriteIntEnClrCompare : u8,
     #[doc = "Disable"]
     Clear = 1
 );
 
 define_enum!(
     #[doc = "nrf52840.INTENSET :: field `COMPARE0`"]
-    ReadTimer0IntEnSetCompare : u8,
+    ReadIntEnSetCompare : u8,
     #[doc = "Read: Disabled"]
     Disabled = 0,
     #[doc = "Read: Enabled"]
@@ -47,14 +47,14 @@ define_enum!(
 
 define_enum!(
     #[doc = "nrf52840.INTENSET :: field `COMPARE0`"]
-    WriteTimer0IntEnSetCompare : u8,
+    WriteIntEnSetCompare : u8,
     #[doc = "Enable"]
     Set = 1
 );
 
 define_enum!(
     #[doc = "nrf52840.MODE :: field `MODE`"]
-    Timer0Mode : u8,
+    Mode : u8,
     #[doc = "Select Timer mode"]
     Timer = 0,
     #[doc = "Deprecated enumerator -  Select Counter mode"]
@@ -65,7 +65,7 @@ define_enum!(
 
 define_enum!(
     #[doc = "nrf52840.SHORTS :: field `COMPARE0_CLEAR`"]
-    Timer0ShortsCompare : u8,
+    ShortsCompare : u8,
     #[doc = "Disable shortcut"]
     Disabled = 0,
     #[doc = "Enable shortcut"]
@@ -74,42 +74,42 @@ define_enum!(
 
 define_enum!(
     #[doc = "nrf52840.TASKS_CAPTURE[%s] :: field `TASKS_CAPTURE`"]
-    Timer0TasksCapture : u8,
+    TasksCapture : u8,
     #[doc = "Trigger task"]
     Trigger = 1
 );
 
 define_enum!(
     #[doc = "nrf52840.TASKS_CLEAR :: field `TASKS_CLEAR`"]
-    Timer0TasksClear : u8,
+    TasksClear : u8,
     #[doc = "Trigger task"]
     Trigger = 1
 );
 
 define_enum!(
     #[doc = "nrf52840.TASKS_COUNT :: field `TASKS_COUNT`"]
-    Timer0TasksCount : u8,
+    TasksCount : u8,
     #[doc = "Trigger task"]
     Trigger = 1
 );
 
 define_enum!(
     #[doc = "nrf52840.TASKS_SHUTDOWN :: field `TASKS_SHUTDOWN`"]
-    Timer0TasksShutdown : u8,
+    TasksShutdown : u8,
     #[doc = "Trigger task"]
     Trigger = 1
 );
 
 define_enum!(
     #[doc = "nrf52840.TASKS_START :: field `TASKS_START`"]
-    Timer0TasksStart : u8,
+    TasksStart : u8,
     #[doc = "Trigger task"]
     Trigger = 1
 );
 
 define_enum!(
     #[doc = "nrf52840.TASKS_STOP :: field `TASKS_STOP`"]
-    Timer0TasksStop : u8,
+    TasksStop : u8,
     #[doc = "Trigger task"]
     Trigger = 1
 );

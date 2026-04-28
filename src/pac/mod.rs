@@ -1509,6 +1509,8 @@ impl GenState {
         self.type_name_counters.clear();
         self.emitted_regs.clear();
         self.reg_type_by_layout.clear();
+        self.emitted_enums.clear();
+        self.enum_type_by_layout.clear();
     }
 
     fn alloc_type_name(&mut self, base: String) -> String {
@@ -3638,8 +3640,7 @@ fn emit_enum_for_field(
         .map(sanitize_type_name)
         .unwrap_or_else(|| {
             let name = sanitize_type_name(&format!(
-                "{}_{}_{}",
-                p.name,
+                "{}_{}",
                 reg_path.replace('.', "_"),
                 field_name_for_enum
             ));
