@@ -614,6 +614,7 @@ pub fn generate_device_dir_with_options(
     let mut type_defs = CodeWriter::new();
 
     for p in &periphs {
+        st.reset_reg_state();
         let (mod_content, regs_content, enums_content) =
             generate_peripheral_file_with_enums(device, p, &mut st, &mut type_defs, options)?;
         let mod_name = sanitize_module_name(&p.name);
@@ -883,7 +884,6 @@ fn generate_peripheral_file(
         mod_out.writeln(&format!(
             "pub const PTR_MUT: *mut {block_name} = BASE as *mut {block_name};"
         ))?;
-
     } else {
         mod_out.writeln("#[repr(C)]")?;
         mod_out.writeln("pub struct RegisterBlock;")?;
@@ -891,7 +891,9 @@ fn generate_peripheral_file(
 
     {
         let has_once = regs_out.s.contains("WOOnce<") || regs_out.s.contains("RWOnce<");
-        let all_types = ["RW", "RO", "WO", "W1S", "W1C", "W0S", "W0C", "WT", "RWOnce", "WOOnce"];
+        let all_types = [
+            "RW", "RO", "WO", "W1S", "W1C", "W0S", "W0C", "WT", "RWOnce", "WOOnce",
+        ];
         let mut used: Vec<&str> = all_types
             .iter()
             .filter(|t| regs_out.s.contains(&format!("{t}<")))
@@ -914,7 +916,9 @@ fn generate_peripheral_file(
                 regs_out.s.insert_str(pos, &format!("{}\n", import));
             }
             if has_once {
-                regs_out.s.insert_str(pos, "use core::marker::PhantomData;\n");
+                regs_out
+                    .s
+                    .insert_str(pos, "use core::marker::PhantomData;\n");
             }
         }
     }
@@ -998,15 +1002,16 @@ fn generate_cluster_files(
     let has_once_regs = c.items.iter().any(|item| {
         if let svd::RegisterBlockItem::Register { register } = item {
             let access = resolve_access(ctx, register);
-            matches!(access.access, svd::AccessType::WriteOnce | svd::AccessType::ReadWriteOnce)
+            matches!(
+                access.access,
+                svd::AccessType::WriteOnce | svd::AccessType::ReadWriteOnce
+            )
         } else {
             false
         }
     });
 
-    regs_out.writeln(&format!(
-        "use {regs_enums_prefix}enums as field_enums;"
-    ))?;
+    regs_out.writeln(&format!("use {regs_enums_prefix}enums as field_enums;"))?;
     if has_once_regs {
         regs_out.writeln("use core::marker::PhantomData;")?;
         regs_out.writeln(&format!(
@@ -1061,9 +1066,7 @@ fn generate_cluster_files(
         "use {mod_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written}};"
     ))?;
     mod_out.writeln(&format!("use {mod_root_prefix}macros;"))?;
-    mod_out.writeln(&format!(
-        "use {mod_enums_prefix}enums;"
-    ))?;
+    mod_out.writeln(&format!("use {mod_enums_prefix}enums;"))?;
     mod_out.writeln("pub mod registers;")?;
     mod_out.writeln("")?;
 
@@ -1502,6 +1505,12 @@ impl GenState {
         }
     }
 
+    fn reset_reg_state(&mut self) {
+        self.type_name_counters.clear();
+        self.emitted_regs.clear();
+        self.reg_type_by_layout.clear();
+    }
+
     fn alloc_type_name(&mut self, base: String) -> String {
         let n = self.type_name_counters.entry(base.clone()).or_insert(0);
         if *n == 0 {
@@ -1861,7 +1870,17 @@ fn emit_register_block_items(
         match it {
             svd::RegisterBlockItem::Register { register } => {
                 let reg_absolute_offset = base_offset + register.address_offset;
-                emit_register_field(st, out, regs_out, type_defs, ctx, &name, register, reg_absolute_offset, options)?;
+                emit_register_field(
+                    st,
+                    out,
+                    regs_out,
+                    type_defs,
+                    ctx,
+                    &name,
+                    register,
+                    reg_absolute_offset,
+                    options,
+                )?;
             }
             svd::RegisterBlockItem::Cluster { cluster } => {
                 emit_cluster_field(st, out, regs_out, type_defs, ctx, &name, cluster, options)?;
@@ -1887,7 +1906,16 @@ fn emit_register_field(
 ) -> Result<()> {
     let (base_ty, size_bytes) = reg_primitive_ty_and_size(ctx, &r.properties);
     let access = resolve_access(ctx, r);
-    let reg_ty = register_wrapper_type(st, type_defs, ctx, r, &base_ty, access, base_offset, options)?;
+    let reg_ty = register_wrapper_type(
+        st,
+        type_defs,
+        ctx,
+        r,
+        &base_ty,
+        access,
+        base_offset,
+        options,
+    )?;
     let path_ty = format!("registers::{reg_ty}");
     if let Some(dim) = &r.dim {
         if dim.dim_increment == size_bytes {
@@ -3071,10 +3099,10 @@ fn register_wrapper_type(
     base_offset: u64,
     options: PacOptions,
 ) -> Result<String> {
-    // Base name: <PERIPH>_<CLUSTERS>_<REG>
+    // Base name: <CLUSTERS>_<REG>
     let periph = ctx.periph.map(|p| p.name.as_str()).unwrap_or("PERIPH");
     let reg_path = ctx_reg_path(ctx, &r.name);
-    let base = sanitize_type_name(&format!("{}_{}", periph, reg_path.replace('.', "_")));
+    let base = sanitize_type_name(&reg_path.replace('.', "_"));
 
     // Fingerprint: access + base type + field layout + enum bindings.
     let mut fp = format!(
@@ -3193,9 +3221,7 @@ fn register_wrapper_type(
             ))?;
         }
         out.writeln("#[inline(always)]")?;
-        out.writeln(&format!(
-            "pub fn once(&self) -> {token_inner} {{"
-        ))?;
+        out.writeln(&format!("pub fn once(&self) -> {token_inner} {{"))?;
         out.indent();
         let base_ref = if ctx.cluster_stack.is_empty() {
             "super::BASE".to_string()
