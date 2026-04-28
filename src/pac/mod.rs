@@ -796,7 +796,6 @@ fn generate_peripheral_file(
 
     if has_enums {
         mod_out.writeln("pub mod enums;")?;
-        mod_out.writeln("")?;
     }
 
     if has_registers
@@ -879,6 +878,7 @@ fn generate_peripheral_file(
             st.restore(snap);
         }
 
+        mod_out.writeln("")?;
         mod_out.writeln(&format!(
             "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
         ))?;
@@ -1726,6 +1726,7 @@ fn generate_peripheral(
     )?;
 
     // Raw pointers.
+    mod_out.writeln("")?;
     mod_out.writeln(&format!(
         "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
     ))?;
