@@ -747,10 +747,6 @@ fn generate_peripheral_file(
 
     let block_name = sanitize_type_name(&p.name);
 
-    mod_out.writeln("#[allow(non_snake_case)]")?;
-    mod_out.writeln("#[allow(non_camel_case_types)]")?;
-    mod_out.writeln("#[allow(dead_code)]")?;
-    mod_out.writeln("")?;
     mod_out.writeln(&format!(
         "pub const BASE: usize = 0x{:08X};",
         p.base_address
