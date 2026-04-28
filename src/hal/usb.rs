@@ -583,7 +583,7 @@ impl UsbInfo {
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type {usb_ty} = pac::peripherals::{}::RegisterBlock;\n\n",
+            "        pub type {usb_ty} = pac::peripherals::{}::{usb_ty};\n\n",
             self.periph_mod,
         ));
 

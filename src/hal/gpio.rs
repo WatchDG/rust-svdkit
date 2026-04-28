@@ -22,7 +22,7 @@ impl GpioPortInfo {
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type {port_ty} = pac::peripherals::{}::RegisterBlock;\n\n",
+            "        pub type {port_ty} = pac::peripherals::{}::{port_ty};\n\n",
             self.periph_mod,
         ));
         s.push_str("        use core::marker::PhantomData;\n\n");
@@ -421,12 +421,7 @@ fn is_gpio_like_port(name: &str) -> bool {
 }
 
 fn gpio_port_type_name(periph_name: &str) -> String {
-    let b = periph_name.as_bytes();
-    if b.len() >= 2 && (b[0] == b'P' || b[0] == b'p') && b[1..].iter().all(|c| c.is_ascii_digit()) {
-        format!("Port{}", &periph_name[1..])
-    } else {
-        "Port".to_string()
-    }
+    sanitize_type_name(periph_name)
 }
 
 fn pac_enum_type_name_for_field(
@@ -451,8 +446,7 @@ fn pac_enum_type_name_for_field(
         .map(sanitize_type_name)
         .unwrap_or_else(|| {
             sanitize_type_name(&format!(
-                "{}_{}_{}",
-                periph_name,
+                "{}_{}",
                 reg_path.replace('.', "_"),
                 field_name_for_enum
             ))

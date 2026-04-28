@@ -33,7 +33,7 @@ impl TimerInfo {
         s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
         s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type {timer_ty} = pac::peripherals::{}::RegisterBlock;\n\n",
+            "        pub type {timer_ty} = pac::peripherals::{}::{timer_ty};\n\n",
             self.periph_mod,
         ));
 
@@ -653,12 +653,7 @@ fn pac_enum_type_name_for_field(
         .or(evs.name.as_deref())
         .map(gpio::sanitize_type_name)
         .unwrap_or_else(|| {
-            gpio::sanitize_type_name(&format!(
-                "{}_{}_{}",
-                periph_name,
-                reg_path.replace('.', "_"),
-                f.name
-            ))
+            gpio::sanitize_type_name(&format!("{}_{}", reg_path.replace('.', "_"), f.name))
         });
     Some(base)
 }

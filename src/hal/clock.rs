@@ -35,8 +35,8 @@ impl ClockInfo {
         s.push_str("        use super::pac;\n\n");
         let type_name = sanitize_type_name(self.hal_mod.as_str());
         s.push_str(&format!(
-            "        pub type {}Register = pac::peripherals::{}::RegisterBlock;\n\n",
-            type_name, self.periph_mod,
+            "        pub type {}Register = pac::peripherals::{}::{};\n\n",
+            type_name, self.periph_mod, type_name,
         ));
 
         s.push_str("        use core::marker::PhantomData;\n\n");
