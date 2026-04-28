@@ -5,9 +5,9 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-#[path = "../generated/nrf52840/nrf52840_hal/mod.rs"]
+#[path = "../generated/nrf52840/nrf52840_hal/lib.rs"]
 mod nrf52840_hal;
-#[path = "../generated/nrf52840/nrf52840_pac/mod.rs"]
+#[path = "../generated/nrf52840/nrf52840_pac/lib.rs"]
 mod nrf52840_pac;
 
 const CHIP_FREQ_HZ: u32 = 64_000_000;

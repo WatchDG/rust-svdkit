@@ -6,11 +6,11 @@
 #![allow(unused_imports)]
 
 mod nrf52840_pac {
-    include!("../generated/nrf52840/nrf52840_pac/mod.rs");
+    include!("../generated/nrf52840/nrf52840_pac/lib.rs");
 }
 
 mod nrf52840_hal {
-    include!("../generated/nrf52840/nrf52840_hal/mod.rs");
+    include!("../generated/nrf52840/nrf52840_hal/lib.rs");
 }
 
 fn example_gpio_pin_output() {

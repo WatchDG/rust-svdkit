@@ -541,32 +541,25 @@ pub fn generate_device_dir_with_options(
             .then(a.name.cmp(&b.name))
     });
 
-    let mut mod_lines = Vec::new();
-    mod_lines.push("#[allow(non_snake_case)]".to_string());
-    mod_lines.push("#[allow(non_camel_case_types)]".to_string());
-    mod_lines.push("#[allow(dead_code)]".to_string());
-    mod_lines.push("#[allow(unused_imports)]".to_string());
-    mod_lines.push("#[allow(unsafe_op_in_unsafe_fn)]".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("pub mod traits;".to_string());
-    mod_lines.push("pub mod types;".to_string());
-    mod_lines.push("pub mod enums;".to_string());
-    mod_lines.push("pub mod constants;".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("#[macro_use]".to_string());
-    mod_lines.push("pub mod macros;".to_string());
-    mod_lines.push("".to_string());
-
-    mod_lines.push("pub mod peripherals;".to_string());
-    mod_lines.push("".to_string());
-    mod_lines.push("pub mod cortex_m;".to_string());
-    mod_lines.push("pub mod rt;".to_string());
-
+    let lib_rs_content = {
+        let mut lines = Vec::new();
+        lines.push("pub mod traits;".to_string());
+        lines.push("pub mod types;".to_string());
+        lines.push("pub mod enums;".to_string());
+        lines.push("pub mod constants;".to_string());
+        lines.push("".to_string());
+        lines.push("#[macro_use]".to_string());
+        lines.push("pub mod macros;".to_string());
+        lines.push("".to_string());
+        lines.push("pub mod peripherals;".to_string());
+        lines.push("".to_string());
+        lines.push("pub mod cortex_m;".to_string());
+        lines.push("pub mod rt;".to_string());
+        lines.join("\n")
+    };
     files.push(GeneratedFile {
-        file_name: "mod.rs".to_string(),
-        content: mod_lines.join("\n"),
+        file_name: "lib.rs".to_string(),
+        content: lib_rs_content,
     });
 
     files.push(GeneratedFile {
@@ -698,25 +691,6 @@ pub fn generate_device_dir_with_options(
             }
         }
     }
-
-    let lib_rs_content = {
-        let mut lines = Vec::new();
-        lines.push("#![no_std]".to_string());
-        lines.push("".to_string());
-        lines.push("pub mod traits;".to_string());
-        lines.push("pub mod types;".to_string());
-        lines.push("pub mod enums;".to_string());
-        lines.push("pub mod constants;".to_string());
-        lines.push("pub mod macros;".to_string());
-        lines.push("pub mod peripherals;".to_string());
-        lines.push("pub mod cortex_m;".to_string());
-        lines.push("pub mod rt;".to_string());
-        lines.join("\n")
-    };
-    files.push(GeneratedFile {
-        file_name: "lib.rs".to_string(),
-        content: lib_rs_content,
-    });
 
     let cargo_toml_content = {
         let mut lines = Vec::new();

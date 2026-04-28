@@ -44,55 +44,64 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
     let dir_name = format!("{}_hal", sanitize_file_stem(&device.name));
     let mut files = Vec::new();
 
-    let mut mod_lines = Vec::new();
-    mod_lines.push("#[allow(dead_code)]".to_string());
-    mod_lines.push("#[allow(non_snake_case)]".to_string());
-    mod_lines.push("#[allow(clippy::eq_op)]".to_string());
-    mod_lines.push("#[allow(clippy::erasing_op)]".to_string());
-    mod_lines.push("#[allow(clippy::identity_op)]".to_string());
-    mod_lines.push("#[allow(unsafe_op_in_unsafe_fn)]".to_string());
-    mod_lines.push("#[allow(unused_imports)]".to_string());
-    mod_lines.push("".to_string());
-
     let stem = sanitize_file_stem(&device.name);
-    let pac_mod = format!("{stem}_pac");
-    mod_lines.push(format!("use crate::{pac_mod} as pac;"));
+    let pac_crate = format!("{stem}_pac");
+
+    let mut lib_lines = Vec::new();
+    lib_lines.push(format!("use crate::{pac_crate} as pac;"));
+    lib_lines.push("".to_string());
 
     let gpio_ports = gpio::collect_gpio_ports(device);
     if !gpio_ports.is_empty() {
-        mod_lines.push("pub mod gpio;".to_string());
+        lib_lines.push("pub mod gpio;".to_string());
     }
 
     let timers = timer::collect_timers(device);
     if !timers.is_empty() {
-        mod_lines.push("pub mod timer;".to_string());
+        lib_lines.push("pub mod timer;".to_string());
     }
 
     let uarts = uart::collect_uarts(device);
     if !uarts.is_empty() {
-        mod_lines.push("pub mod uart;".to_string());
+        lib_lines.push("pub mod uart;".to_string());
     }
 
     let usb_devices = usb::collect_usb_devices(device);
     let has_usb = !usb_devices.is_empty();
     if has_usb {
-        mod_lines.push("pub mod usb;".to_string());
+        lib_lines.push("pub mod usb;".to_string());
     }
 
     let clocks = clock::collect_clocks(device);
     if !clocks.is_empty() {
-        mod_lines.push("pub mod clock;".to_string());
+        lib_lines.push("pub mod clock;".to_string());
     }
 
     let power_devices = power::collect_power_devices(device);
     if !power_devices.is_empty() {
-        mod_lines.push("pub mod power;".to_string());
+        lib_lines.push("pub mod power;".to_string());
     }
 
-    mod_lines.push("".to_string());
+    lib_lines.push("".to_string());
     files.push(GeneratedFile {
-        file_name: "mod.rs".to_string(),
-        content: mod_lines.join("\n"),
+        file_name: "lib.rs".to_string(),
+        content: lib_lines.join("\n"),
+    });
+
+    let cargo_toml_content = {
+        let mut lines = Vec::new();
+        lines.push("[package]".to_string());
+        lines.push(format!("name = {:?}", dir_name));
+        lines.push("version = \"0.1.0\"".to_string());
+        lines.push("edition = \"2024\"".to_string());
+        lines.push("".to_string());
+        lines.push("[dependencies]".to_string());
+        lines.push(format!("{pac_crate} = {{ path = \"../{pac_crate}\" }}"));
+        lines.join("\n")
+    };
+    files.push(GeneratedFile {
+        file_name: "Cargo.toml".to_string(),
+        content: cargo_toml_content,
     });
 
     if !gpio_ports.is_empty() {
