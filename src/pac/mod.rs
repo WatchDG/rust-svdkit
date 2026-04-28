@@ -561,6 +561,7 @@ pub fn generate_device_dir_with_options(
 
     mod_lines.push("pub mod peripherals;".to_string());
     mod_lines.push("".to_string());
+    mod_lines.push("pub mod rt;".to_string());
 
     files.push(GeneratedFile {
         file_name: "mod.rs".to_string(),
@@ -707,6 +708,7 @@ pub fn generate_device_dir_with_options(
         lines.push("pub mod constants;".to_string());
         lines.push("pub mod macros;".to_string());
         lines.push("pub mod peripherals;".to_string());
+        lines.push("pub mod rt;".to_string());
         lines.join("\n")
     };
     files.push(GeneratedFile {
@@ -1423,7 +1425,7 @@ fn generate_cortex_m_rs(device: &svd::Device) -> Result<String> {
 /// Выходные файлы:
 /// - `<device>_pac.rs` (как `generate_device_file`)
 /// - `<device>_cortex_m.rs` (nvic модуль)
-/// - `<device>_rt.rs` (startup + vector table)
+/// - `rt.rs` (startup + vector table)
 /// - `<device>_link.x` (минимальный linker script; `INCLUDE memory.x`)
 /// - `memory.x` (карта памяти FLASH/RAM на основе `<addressBlock>` из SVD)
 pub fn generate_device_files_with_rt(device: &svd::Device) -> Result<Vec<GeneratedFile>> {
@@ -1440,7 +1442,7 @@ pub fn generate_device_files_with_rt(device: &svd::Device) -> Result<Vec<Generat
     });
 
     out.push(GeneratedFile {
-        file_name: format!("{file_stem}_rt.rs"),
+        file_name: "rt.rs".to_string(),
         content: generate_rt_rs(device)?,
     });
     out.push(GeneratedFile {
@@ -3845,7 +3847,7 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.writeln("}")?;
     out.writeln("")?;
 
-    out.writeln("extern \"C\" {")?;
+    out.writeln("unsafe extern \"C\" {")?;
     out.indent();
     out.writeln("static mut __vector_table: u32;")?;
     out.writeln("static mut _sidata: u32;")?;
