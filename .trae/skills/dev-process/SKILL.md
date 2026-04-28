@@ -22,9 +22,9 @@ description: "Guides PAC→HAL code generation workflow with temp directory vali
 When solving a new task that changes PAC:
 
 1. Generate PAC package
-2. Copy PAC to temporary directory `/temp`
-3. Make changes to files in `/temp` and verify they build successfully
-4. Determine the difference between initially generated files and files in `/temp`
+2. Copy PAC to temporary directory `./temp`
+3. Make changes to files in `./temp` and verify they build successfully
+4. Determine the difference between initially generated files and files in `./temp`
 5. Identify required changes to the PAC generator
 6. Implement changes in the PAC generator
 7. Verify that newly generated files build successfully
@@ -34,9 +34,9 @@ When solving a new task that changes PAC:
 After completing PAC development, proceed with HAL package using the same workflow:
 
 1. Generate HAL package
-2. Copy HAL to temporary directory `/temp`
-3. Make changes to files in `/temp` and verify they build successfully
-4. Determine the difference between initially generated files and files in `/temp`
+2. Copy HAL to temporary directory `./temp`
+3. Make changes to files in `./temp` and verify they build successfully
+4. Determine the difference between initially generated files and files in `./temp`
 5. Identify required changes to the HAL generator
 6. Implement changes in the HAL generator
 7. Verify that newly generated files build successfully
@@ -47,4 +47,4 @@ After completing PAC development, proceed with HAL package using the same workfl
 2. PAC generator has priority and MAY modify any code
 3. HAL generator MUST adapt to changes in PAC package
 4. All changes MUST be validated by successful build before proceeding
-5. Temporary directory `/temp` MAY be used for experimental modifications
+5. Temporary directory `./temp` MAY be used for experimental modifications

@@ -818,8 +818,6 @@ fn generate_peripheral_file(
             }
         }
 
-        mod_out.writeln("use super::super::macros;")?;
-        mod_out.writeln("use super::super::types::{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written};")?;
         if has_registers {
             mod_out.writeln("pub mod registers;")?;
         }
@@ -900,43 +898,44 @@ fn generate_peripheral_file(
             &mut once_regs,
         );
         if !once_regs.is_empty() {
-            mod_out.writeln("use core::marker::PhantomData;")?;
             let once_ty = "Once";
-            mod_out.writeln("")?;
-            mod_out
+            regs_out.writeln("use core::marker::PhantomData;")?;
+            regs_out.writeln("")?;
+            regs_out
                 .writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
-            mod_out.writeln("///")?;
-            mod_out
+            regs_out.writeln("///")?;
+            regs_out
                 .writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
-            mod_out.writeln(&format!("pub struct {once_ty} {{"))?;
-            mod_out.indent();
-            mod_out.writeln("base: usize,")?;
+            regs_out.writeln(&format!("pub struct {once_ty} {{"))?;
+            regs_out.indent();
+            regs_out.writeln("base: usize,")?;
             for r in &once_regs {
-                mod_out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
+                regs_out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
             }
-            mod_out.dedent();
-            mod_out.writeln("}")?;
-            mod_out.writeln(&format!("impl {once_ty} {{"))?;
-            mod_out.indent();
-            mod_out.writeln("/// Create tokens for this peripheral.")?;
-            mod_out.writeln("///")?;
-            mod_out.writeln("/// # Safety")?;
-            mod_out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
-            mod_out.writeln("pub unsafe fn new() -> Self {")?;
-            mod_out.indent();
-            mod_out.writeln("let base = BASE;")?;
-            mod_out.writeln("Self {")?;
-            mod_out.indent();
-            mod_out.writeln("base,")?;
+            regs_out.dedent();
+            regs_out.writeln("}")?;
+            regs_out.writeln(&format!("impl {once_ty} {{"))?;
+            regs_out.indent();
+            regs_out.writeln("/// Create tokens for this peripheral.")?;
+            regs_out.writeln("///")?;
+            regs_out.writeln("/// # Safety")?;
+            regs_out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
+            regs_out.writeln("pub unsafe fn new() -> Self {")?;
+            regs_out.indent();
+            regs_out.writeln("let base = super::BASE;")?;
+            regs_out.writeln("Self {")?;
+            regs_out.indent();
+            regs_out.writeln("base,")?;
             for r in &once_regs {
-                mod_out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
+                regs_out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
             }
-            mod_out.dedent();
-            mod_out.writeln("}")?;
-            mod_out.dedent();
-            mod_out.writeln("}")?;
-            mod_out.dedent();
-            mod_out.writeln("}")?;
+            regs_out.dedent();
+            regs_out.writeln("}")?;
+            regs_out.dedent();
+            regs_out.writeln("}")?;
+            regs_out.dedent();
+            regs_out.writeln("}")?;
+            regs_out.writeln("")?;
         }
     } else {
         mod_out.writeln("#[repr(C)]")?;
@@ -945,12 +944,18 @@ fn generate_peripheral_file(
 
     {
         let types_s = &regs_out.s;
-        let all_types = ["RW", "RO", "WO", "W1S", "W1C", "W0S", "W0C", "WT"];
-        let used: Vec<&str> = all_types
+        let all_types = ["RW", "RO", "WO", "W1S", "W1C", "W0S", "W0C", "WT", "RWOnce", "WOOnce"];
+        let mut used: Vec<&str> = all_types
             .iter()
             .filter(|t| types_s.contains(&format!("{t}<")))
             .copied()
             .collect();
+        if types_s.contains("Unwritten") {
+            used.push("Unwritten");
+        }
+        if types_s.contains("Written") {
+            used.push("Written");
+        }
         if !used.is_empty() {
             let import = format!("use super::super::super::types::{{{}}};", used.join(", "));
             let pos = regs_out
