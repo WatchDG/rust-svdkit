@@ -886,84 +886,38 @@ fn generate_peripheral_file(
             "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
         ))?;
 
-        let mut once_regs = Vec::new();
-        let mut name_counts = BTreeMap::new();
-        collect_once_regs(
-            &ctx,
-            &register_items,
-            0,
-            "",
-            None,
-            &mut name_counts,
-            &mut once_regs,
-        );
-        if !once_regs.is_empty() {
-            let once_ty = "Once";
-            regs_out.writeln("use core::marker::PhantomData;")?;
-            regs_out.writeln("")?;
-            regs_out
-                .writeln("/// Compile-time writeOnce/read-writeOnce tokens (state-machine API).")?;
-            regs_out.writeln("///")?;
-            regs_out
-                .writeln("/// NOTE: this enforces \"once\" only for code using this token API.")?;
-            regs_out.writeln(&format!("pub struct {once_ty} {{"))?;
-            regs_out.indent();
-            regs_out.writeln("base: usize,")?;
-            for r in &once_regs {
-                regs_out.writeln(&format!("pub {}: {},", r.field_name, r.token_ty))?;
-            }
-            regs_out.dedent();
-            regs_out.writeln("}")?;
-            regs_out.writeln(&format!("impl {once_ty} {{"))?;
-            regs_out.indent();
-            regs_out.writeln("/// Create tokens for this peripheral.")?;
-            regs_out.writeln("///")?;
-            regs_out.writeln("/// # Safety")?;
-            regs_out.writeln("/// The returned tokens allow volatile access to MMIO.")?;
-            regs_out.writeln("pub unsafe fn new() -> Self {")?;
-            regs_out.indent();
-            regs_out.writeln("let base = super::BASE;")?;
-            regs_out.writeln("Self {")?;
-            regs_out.indent();
-            regs_out.writeln("base,")?;
-            for r in &once_regs {
-                regs_out.writeln(&format!("{}: {},", r.field_name, r.init_expr))?;
-            }
-            regs_out.dedent();
-            regs_out.writeln("}")?;
-            regs_out.dedent();
-            regs_out.writeln("}")?;
-            regs_out.dedent();
-            regs_out.writeln("}")?;
-            regs_out.writeln("")?;
-        }
     } else {
         mod_out.writeln("#[repr(C)]")?;
         mod_out.writeln("pub struct RegisterBlock;")?;
     }
 
     {
-        let types_s = &regs_out.s;
+        let has_once = regs_out.s.contains("WOOnce<") || regs_out.s.contains("RWOnce<");
         let all_types = ["RW", "RO", "WO", "W1S", "W1C", "W0S", "W0C", "WT", "RWOnce", "WOOnce"];
         let mut used: Vec<&str> = all_types
             .iter()
-            .filter(|t| types_s.contains(&format!("{t}<")))
+            .filter(|t| regs_out.s.contains(&format!("{t}<")))
             .copied()
             .collect();
-        if types_s.contains("Unwritten") {
+        if regs_out.s.contains("Unwritten") {
             used.push("Unwritten");
         }
-        if types_s.contains("Written") {
+        if regs_out.s.contains("Written") {
             used.push("Written");
         }
-        if !used.is_empty() {
-            let import = format!("use super::super::super::types::{{{}}};", used.join(", "));
+        if !used.is_empty() || has_once {
             let pos = regs_out
                 .s
                 .find("macros::*;\n")
                 .map(|p| p + "macros::*;\n".len())
                 .unwrap_or(0);
-            regs_out.s.insert_str(pos, &format!("{}\n", import));
+            if !used.is_empty() {
+                let import = format!("use super::super::super::types::{{{}}};", used.join(", "));
+                regs_out.s.insert_str(pos, &format!("{}\n", import));
+            }
+            if has_once {
+                regs_out.s.insert_str(pos, "use core::marker::PhantomData;\n");
+            }
         }
     }
 
@@ -1043,12 +997,28 @@ fn generate_cluster_files(
     let regs_enums_prefix = "super::".repeat(3 + 2 * depth);
     let regs_root_prefix = "super::".repeat(5 + 2 * depth);
 
+    let has_once_regs = c.items.iter().any(|item| {
+        if let svd::RegisterBlockItem::Register { register } = item {
+            let access = resolve_access(ctx, register);
+            matches!(access.access, svd::AccessType::WriteOnce | svd::AccessType::ReadWriteOnce)
+        } else {
+            false
+        }
+    });
+
     regs_out.writeln(&format!(
         "use {regs_enums_prefix}enums as field_enums;"
     ))?;
-    regs_out.writeln(&format!(
-        "use {regs_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT}};"
-    ))?;
+    if has_once_regs {
+        regs_out.writeln("use core::marker::PhantomData;")?;
+        regs_out.writeln(&format!(
+            "use {regs_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten}};"
+        ))?;
+    } else {
+        regs_out.writeln(&format!(
+            "use {regs_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT}};"
+        ))?;
+    }
     regs_out.writeln(&format!("use {regs_root_prefix}macros::*;"))?;
     regs_out.writeln("")?;
 
@@ -1890,7 +1860,8 @@ fn emit_register_block_items(
         // Emit actual field.
         match it {
             svd::RegisterBlockItem::Register { register } => {
-                emit_register_field(st, out, regs_out, type_defs, ctx, &name, register, options)?;
+                let reg_absolute_offset = base_offset + register.address_offset;
+                emit_register_field(st, out, regs_out, type_defs, ctx, &name, register, reg_absolute_offset, options)?;
             }
             svd::RegisterBlockItem::Cluster { cluster } => {
                 emit_cluster_field(st, out, regs_out, type_defs, ctx, &name, cluster, options)?;
@@ -1911,11 +1882,12 @@ fn emit_register_field(
     ctx: &Ctx<'_>,
     field_name: &str,
     r: &svd::Register,
+    base_offset: u64,
     options: PacOptions,
 ) -> Result<()> {
     let (base_ty, size_bytes) = reg_primitive_ty_and_size(ctx, &r.properties);
     let access = resolve_access(ctx, r);
-    let reg_ty = register_wrapper_type(st, type_defs, ctx, r, &base_ty, access, options)?;
+    let reg_ty = register_wrapper_type(st, type_defs, ctx, r, &base_ty, access, base_offset, options)?;
     let path_ty = format!("registers::{reg_ty}");
     if let Some(dim) = &r.dim {
         if dim.dim_increment == size_bytes {
@@ -3096,6 +3068,7 @@ fn register_wrapper_type(
     r: &svd::Register,
     base_ty: &str,
     access: ResolvedAccess,
+    base_offset: u64,
     options: PacOptions,
 ) -> Result<String> {
     // Base name: <PERIPH>_<CLUSTERS>_<REG>
@@ -3193,19 +3166,65 @@ fn register_wrapper_type(
     );
     let write_model = access.write_model;
 
-    let macro_name = match (has_read, has_write, write_model) {
-        (true, false, _) => "impl_ro_register",
-        (false, true, RegWriteModel::Normal) => "impl_wo_register",
-        (true, true, RegWriteModel::Normal) => "impl_rw_register",
-        (_, true, RegWriteModel::W1S) => "impl_w1s_register",
-        (_, true, RegWriteModel::W1C) => "impl_w1c_register",
-        (_, true, RegWriteModel::W0S) => "impl_w0s_register",
-        (_, true, RegWriteModel::W0C) => "impl_w0c_register",
-        (_, true, RegWriteModel::WT) => "impl_wt_register",
-        _ => "impl_rw_register",
-    };
+    let is_once = matches!(
+        access.access,
+        svd::AccessType::WriteOnce | svd::AccessType::ReadWriteOnce
+    );
 
-    out.writeln(&format!("{macro_name}!({ty}, {base_ty});"))?;
+    if is_once {
+        let token_ctor = match access.access {
+            svd::AccessType::WriteOnce => "WOOnce",
+            svd::AccessType::ReadWriteOnce => "RWOnce",
+            _ => unreachable!(),
+        };
+        let token_inner = format!("{token_ctor}<{base_ty}, Unwritten>");
+        out.writeln(&format!("impl {ty} {{"))?;
+        out.indent();
+        if has_write {
+            out.writeln("#[inline(always)]")?;
+            out.writeln(&format!(
+                "pub(super) fn write(&self, v: {base_ty}) {{ self.0.write(v) }}"
+            ))?;
+        }
+        if has_read {
+            out.writeln("#[inline(always)]")?;
+            out.writeln(&format!(
+                "pub(super) fn read(&self) -> {base_ty} {{ self.0.read() }}"
+            ))?;
+        }
+        out.writeln("#[inline(always)]")?;
+        out.writeln(&format!(
+            "pub fn once(&self) -> {token_inner} {{"
+        ))?;
+        out.indent();
+        let base_ref = if ctx.cluster_stack.is_empty() {
+            "super::BASE".to_string()
+        } else {
+            format!("{}BASE", "super::".repeat(1 + 2 * ctx.cluster_stack.len()))
+        };
+        out.writeln(&format!(
+            "{token_ctor} {{ base: {base_ref}, offset: 0x{reg_offset:X}usize, _state: PhantomData, _t: PhantomData }}",
+            reg_offset = base_offset,
+        ))?;
+        out.dedent();
+        out.writeln("}")?;
+        out.dedent();
+        out.writeln("}")?;
+        out.writeln("")?;
+    } else {
+        let macro_name = match (has_read, has_write, write_model) {
+            (true, false, _) => "impl_ro_register",
+            (false, true, RegWriteModel::Normal) => "impl_wo_register",
+            (true, true, RegWriteModel::Normal) => "impl_rw_register",
+            (_, true, RegWriteModel::W1S) => "impl_w1s_register",
+            (_, true, RegWriteModel::W1C) => "impl_w1c_register",
+            (_, true, RegWriteModel::W0S) => "impl_w0s_register",
+            (_, true, RegWriteModel::W0C) => "impl_w0c_register",
+            (_, true, RegWriteModel::WT) => "impl_wt_register",
+            _ => "impl_rw_register",
+        };
+        out.writeln(&format!("{macro_name}!({ty}, {base_ty});"))?;
+    }
 
     if let Some(read_action) = resolve_read_action(ctx, r) {
         if has_read {
