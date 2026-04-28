@@ -561,6 +561,7 @@ pub fn generate_device_dir_with_options(
 
     mod_lines.push("pub mod peripherals;".to_string());
     mod_lines.push("".to_string());
+    mod_lines.push("pub mod cortex_m;".to_string());
     mod_lines.push("pub mod rt;".to_string());
 
     files.push(GeneratedFile {
@@ -708,6 +709,7 @@ pub fn generate_device_dir_with_options(
         lines.push("pub mod constants;".to_string());
         lines.push("pub mod macros;".to_string());
         lines.push("pub mod peripherals;".to_string());
+        lines.push("pub mod cortex_m;".to_string());
         lines.push("pub mod rt;".to_string());
         lines.join("\n")
     };
@@ -1294,14 +1296,13 @@ pub fn generate_from_svd_file(svd_path: &Path, out_dir: &Path) -> Result<std::pa
     write_device_file(&dev, out_dir)
 }
 
-/// Генерирует файл `{device}_cortex_m.rs` с NVIC и enum Interrupt.
+/// Генерирует файл `cortex_m.rs` с NVIC и enum Interrupt.
 ///
 /// Содержит:
 /// - `Interrupt` enum (если есть прерывания)
 /// - `nvic` модуль с функциями для работы с прерываниями
 pub fn generate_cortex_m_file(device: &svd::Device) -> Result<GeneratedFile> {
-    let file_stem = sanitize_file_stem(&device.name);
-    let file_name = format!("{file_stem}_cortex_m.rs");
+    let file_name = "cortex_m.rs".to_string();
     let content = generate_cortex_m_rs(device)?;
     Ok(GeneratedFile { file_name, content })
 }
@@ -1424,9 +1425,9 @@ fn generate_cortex_m_rs(device: &svd::Device) -> Result<String> {
 ///
 /// Выходные файлы:
 /// - `<device>_pac.rs` (как `generate_device_file`)
-/// - `<device>_cortex_m.rs` (nvic модуль)
+/// - `cortex_m.rs` (nvic модуль)
 /// - `rt.rs` (startup + vector table)
-/// - `<device>_link.x` (минимальный linker script; `INCLUDE memory.x`)
+/// - `link.x` (минимальный linker script; `INCLUDE memory.x`)
 /// - `memory.x` (карта памяти FLASH/RAM на основе `<addressBlock>` из SVD)
 pub fn generate_device_files_with_rt(device: &svd::Device) -> Result<Vec<GeneratedFile>> {
     let file_stem = sanitize_file_stem(&device.name);
@@ -1437,7 +1438,7 @@ pub fn generate_device_files_with_rt(device: &svd::Device) -> Result<Vec<Generat
     }
 
     out.push(GeneratedFile {
-        file_name: format!("{file_stem}_cortex_m.rs"),
+        file_name: "cortex_m.rs".to_string(),
         content: generate_cortex_m_rs(device)?,
     });
 
@@ -1446,7 +1447,7 @@ pub fn generate_device_files_with_rt(device: &svd::Device) -> Result<Vec<Generat
         content: generate_rt_rs(device)?,
     });
     out.push(GeneratedFile {
-        file_name: format!("{file_stem}_link.x"),
+        file_name: "link.x".to_string(),
         content: generate_link_x(device)?,
     });
     out.push(GeneratedFile {
