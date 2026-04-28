@@ -745,6 +745,8 @@ fn generate_peripheral_file(
     let mut mod_out = CodeWriter::new();
     let mut regs_out = CodeWriter::new();
 
+    let block_name = sanitize_type_name(&p.name);
+
     mod_out.writeln("#[allow(non_snake_case)]")?;
     mod_out.writeln("#[allow(non_camel_case_types)]")?;
     mod_out.writeln("#[allow(dead_code)]")?;
@@ -823,7 +825,7 @@ fn generate_peripheral_file(
         mod_out.writeln("")?;
 
         mod_out.writeln("#[repr(C)]")?;
-        mod_out.writeln("pub struct RegisterBlock {")?;
+        mod_out.writeln(&format!("pub struct {block_name} {{"))?;
         mod_out.indent();
 
         {
@@ -871,7 +873,7 @@ fn generate_peripheral_file(
                 &mut reset_type_defs,
                 &ctx,
                 items,
-                "RegisterBlock",
+                &block_name,
                 options,
             )?;
             drop(reset_type_defs);
@@ -880,10 +882,10 @@ fn generate_peripheral_file(
 
         mod_out.writeln("")?;
         mod_out.writeln(&format!(
-            "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
+            "pub const PTR: *const {block_name} = BASE as *const {block_name};"
         ))?;
         mod_out.writeln(&format!(
-            "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
+            "pub const PTR_MUT: *mut {block_name} = BASE as *mut {block_name};"
         ))?;
 
     } else {
@@ -1678,6 +1680,7 @@ fn generate_peripheral(
     options: PacOptions,
 ) -> Result<()> {
     let mod_name = sanitize_module_name(&p.name);
+    let block_name = sanitize_type_name(&p.name);
 
     let mut mod_out = CodeWriter::new();
     mod_out.indent();
@@ -1689,7 +1692,7 @@ fn generate_peripheral(
     mod_out.writeln("")?;
 
     mod_out.writeln("#[repr(C)]")?;
-    mod_out.writeln("pub struct RegisterBlock {")?;
+    mod_out.writeln(&format!("pub struct {block_name} {{"))?;
     mod_out.indent();
 
     let items = peripheral_register_items(device, p);
@@ -1721,17 +1724,17 @@ fn generate_peripheral(
         type_defs,
         &ctx,
         items,
-        "RegisterBlock",
+        &block_name,
         options,
     )?;
 
     // Raw pointers.
     mod_out.writeln("")?;
     mod_out.writeln(&format!(
-        "pub const PTR: *const RegisterBlock = BASE as *const RegisterBlock;"
+        "pub const PTR: *const {block_name} = BASE as *const {block_name};"
     ))?;
     mod_out.writeln(&format!(
-        "pub const PTR_MUT: *mut RegisterBlock = BASE as *mut RegisterBlock;"
+        "pub const PTR_MUT: *mut {block_name} = BASE as *mut {block_name};"
     ))?;
 
     // Field enumerations for this peripheral.
