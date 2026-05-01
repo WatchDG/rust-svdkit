@@ -48,7 +48,9 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
     let pac_crate = format!("{stem}_pac");
 
     let mut lib_lines = Vec::new();
-    lib_lines.push(format!("use crate::{pac_crate} as pac;"));
+    lib_lines.push("#![no_std]".to_string());
+    lib_lines.push("".to_string());
+    lib_lines.push(format!("use {pac_crate} as pac;"));
     lib_lines.push("".to_string());
 
     let gpio_ports = gpio::collect_gpio_ports(device);

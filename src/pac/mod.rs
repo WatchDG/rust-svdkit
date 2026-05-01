@@ -543,6 +543,8 @@ pub fn generate_device_dir_with_options(
 
     let lib_rs_content = {
         let mut lines = Vec::new();
+        lines.push("#![no_std]".to_string());
+        lines.push("".to_string());
         lines.push("pub mod traits;".to_string());
         lines.push("pub mod types;".to_string());
         lines.push("pub mod enums;".to_string());
