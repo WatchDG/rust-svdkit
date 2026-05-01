@@ -3753,12 +3753,7 @@ fn collect_device_interrupts(device: &svd::Device) -> (u32, Vec<(u32, String, Op
     }
 
     let max_seen = by_num.keys().next_back().copied().unwrap_or(0);
-    let mut num_irqs = device
-        .cpu
-        .as_ref()
-        .and_then(|c| c.device_num_interrupts)
-        .unwrap_or(max_seen.saturating_add(1));
-    num_irqs = num_irqs.max(max_seen.saturating_add(1));
+    let num_irqs = max_seen.saturating_add(1);
 
     let list = by_num
         .into_iter()
@@ -3973,8 +3968,18 @@ fn generate_link_x(device: &svd::Device) -> Result<String> {
     out.writeln("PROVIDE(DebugMonitor = DefaultHandler);")?;
     out.writeln("PROVIDE(PendSV = DefaultHandler);")?;
     out.writeln("PROVIDE(SysTick = DefaultHandler);")?;
-    for (_n, name, _desc) in &irqs {
-        out.writeln(&format!("PROVIDE({name} = DefaultHandler);"))?;
+    let mut slots: Vec<&str> = vec![""; num_irqs as usize];
+    for (n, name, _) in &irqs {
+        if (*n as usize) < slots.len() {
+            slots[*n as usize] = name.as_str();
+        }
+    }
+    for (i, name) in slots.iter().enumerate() {
+        if name.is_empty() {
+            out.writeln(&format!("PROVIDE(IRQ{i} = DefaultHandler);"))?;
+        } else {
+            out.writeln(&format!("PROVIDE({name} = DefaultHandler);"))?;
+        }
     }
     out.writeln("")?;
 
