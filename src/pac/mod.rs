@@ -700,6 +700,10 @@ pub fn generate_device_dir_with_options(
         lines.push("edition = \"2024\"".to_string());
         lines.push(format!("description = \"PAC for {}\"", device.name));
         lines.push("".to_string());
+        lines.push("[lib]".to_string());
+        lines.push(format!("name = {:?}", dir_name));
+        lines.push("path = \"lib.rs\"".to_string());
+        lines.push("".to_string());
         lines.push("[dependencies]".to_string());
         lines.join("\n")
     };

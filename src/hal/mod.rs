@@ -95,6 +95,10 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
         lines.push("version = \"0.1.0\"".to_string());
         lines.push("edition = \"2024\"".to_string());
         lines.push("".to_string());
+        lines.push("[lib]".to_string());
+        lines.push(format!("name = {:?}", dir_name));
+        lines.push("path = \"lib.rs\"".to_string());
+        lines.push("".to_string());
         lines.push("[dependencies]".to_string());
         lines.push(format!("{pac_crate} = {{ path = \"../{pac_crate}\" }}"));
         lines.join("\n")
