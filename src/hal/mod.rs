@@ -49,6 +49,7 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
 
     let mut lib_lines = Vec::new();
     lib_lines.push("#![no_std]".to_string());
+    lib_lines.push("#![allow(unsafe_op_in_unsafe_fn)]".to_string());
     lib_lines.push("".to_string());
     lib_lines.push(format!("use {pac_crate} as pac;"));
     lib_lines.push("".to_string());
