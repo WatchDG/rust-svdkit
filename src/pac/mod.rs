@@ -507,6 +507,52 @@ pub fn generate_enums_file(device: &svd::Device) -> String {
             out.push_str(&format!("    {name} = {n},\n"));
         }
         out.push_str("}\n");
+
+        out.push_str("\nimpl Interrupt {\n");
+        out.push_str("    #[inline]\n");
+        out.push_str("    pub const fn bits(self) -> u16 {\n");
+        out.push_str("        self as u16\n");
+        out.push_str("    }\n\n");
+        out.push_str("    #[inline]\n");
+        out.push_str("    pub const fn from_bits(bits: u16) -> Option<Self> {\n");
+        out.push_str("        match bits {\n");
+        for (n, name, _desc) in &irqs {
+            out.push_str(&format!("            {n} => Some(Self::{name}),\n"));
+        }
+        out.push_str("            _ => None,\n");
+        out.push_str("        }\n");
+        out.push_str("    }\n");
+        out.push_str("}\n");
+
+        out.push_str("\nimpl From<Interrupt> for u16 {\n");
+        out.push_str("    #[inline]\n");
+        out.push_str("    fn from(intr: Interrupt) -> u16 {\n");
+        out.push_str("        intr.bits()\n");
+        out.push_str("    }\n");
+        out.push_str("}\n");
+
+        out.push_str("\nimpl From<Interrupt> for u32 {\n");
+        out.push_str("    #[inline]\n");
+        out.push_str("    fn from(intr: Interrupt) -> u32 {\n");
+        out.push_str("        intr.bits() as u32\n");
+        out.push_str("    }\n");
+        out.push_str("}\n");
+
+        out.push_str("\nimpl TryFrom<u16> for Interrupt {\n");
+        out.push_str("    type Error = ();\n");
+        out.push_str("    #[inline]\n");
+        out.push_str("    fn try_from(bits: u16) -> core::result::Result<Self, ()> {\n");
+        out.push_str("        Self::from_bits(bits).ok_or(())\n");
+        out.push_str("    }\n");
+        out.push_str("}\n");
+
+        out.push_str("\nimpl TryFrom<u32> for Interrupt {\n");
+        out.push_str("    type Error = ();\n");
+        out.push_str("    #[inline]\n");
+        out.push_str("    fn try_from(bits: u32) -> core::result::Result<Self, ()> {\n");
+        out.push_str("        Self::from_bits(bits as u16).ok_or(())\n");
+        out.push_str("    }\n");
+        out.push_str("}\n");
     }
 
     out
