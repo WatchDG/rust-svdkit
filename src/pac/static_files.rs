@@ -239,7 +239,7 @@ impl RegValue for u64 {
 
 pub fn generate_types_file() -> String {
     r#"use core::marker::PhantomData;
-use super::common_traits::RegValue;
+use crate::common_traits::RegValue;
 
 #[repr(transparent)]
 pub struct RO<T>(core::cell::UnsafeCell<T>);

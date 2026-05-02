@@ -294,7 +294,7 @@ impl RegValue for u64 {
 
 pub fn generate_types_file() -> String {
     r#"use core::marker::PhantomData;
-use super::common_traits::RegValue;
+use crate::common_traits::RegValue;
 
 #[repr(transparent)]
 pub struct RO<T>(core::cell::UnsafeCell<T>);
@@ -1025,7 +1025,7 @@ fn generate_peripheral_file(
         if !used.is_empty() || has_once {
             let mut imports = String::new();
             if !used.is_empty() {
-                let import = format!("use super::super::super::common_types::{{{}}};", used.join(", "));
+                let import = format!("use crate::common_types::{{{}}};", used.join(", "));
                 imports.push_str(&format!("{}\n", import));
             }
             if has_once {
@@ -1105,9 +1105,7 @@ fn generate_cluster_files(
     let cluster_mod_name = sanitize_module_name(&c.name);
 
     let regs_enums_prefix = "super::".repeat(3 + 2 * depth);
-    let regs_root_prefix = "super::".repeat(5 + 2 * depth);
     let mod_enums_prefix = "super::".repeat(2 + 2 * depth);
-    let mod_root_prefix = "super::".repeat(4 + 2 * depth);
 
     let mut mod_out = CodeWriter::new();
     mod_out.writeln("#[allow(non_snake_case)]")?;
@@ -1208,7 +1206,7 @@ fn generate_cluster_files(
         used_reg_types.push("Unwritten");
     }
     if !used_reg_types.is_empty() {
-        regs_imports.push_str(&format!("use {regs_root_prefix}common_types::{{{}}};\n", used_reg_types.join(", ")));
+        regs_imports.push_str(&format!("use crate::common_types::{{{}}};\n", used_reg_types.join(", ")));
     }
     if !regs_imports.is_empty() {
         regs_out.s = format!("{}{}", regs_imports, regs_out.s);
@@ -1226,7 +1224,7 @@ fn generate_cluster_files(
     if mod_out.s.contains("Unwritten") { mod_ts.push("Unwritten"); }
     if mod_out.s.contains("Written") { mod_ts.push("Written"); }
     if !mod_ts.is_empty() {
-        mod_imports.push_str(&format!("use {mod_root_prefix}common_types::{{{}}};\n", mod_ts.join(", ")));
+        mod_imports.push_str(&format!("use crate::common_types::{{{}}};\n", mod_ts.join(", ")));
     }
     if mod_out.s.contains("enums::") {
         mod_imports.push_str(&format!("use {mod_enums_prefix}enums;\n"));
