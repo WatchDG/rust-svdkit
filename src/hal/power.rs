@@ -32,190 +32,186 @@ impl PowerInfo {
     pub fn render(&self) -> Result<String> {
         let mut s = String::new();
 
-        s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
-        s.push_str("        use super::pac;\n\n");
         let type_name = gpio::sanitize_type_name(self.hal_mod.as_str());
         s.push_str(&format!(
-            "        pub type {}Register = pac::peripherals::{}::{};\n\n",
+            "pub type {}Register = crate::pac::peripherals::{}::{};\n\n",
             type_name, self.periph_mod, type_name,
         ));
 
-        s.push_str("        use core::marker::PhantomData;\n\n");
+        s.push_str("use core::marker::PhantomData;\n\n");
 
-        s.push_str("        pub trait PowerState {}\n");
-        s.push_str("        pub struct Unconfigured;\n");
-        s.push_str("        pub struct ConstLat;\n");
-        s.push_str("        pub struct LowPower;\n\n");
-        s.push_str("        impl PowerState for Unconfigured {}\n");
-        s.push_str("        impl PowerState for ConstLat {}\n");
-        s.push_str("        impl PowerState for LowPower {}\n\n");
+        s.push_str("pub trait PowerState {}\n");
+        s.push_str("pub struct Unconfigured;\n");
+        s.push_str("pub struct ConstLat;\n");
+        s.push_str("pub struct LowPower;\n\n");
+        s.push_str("impl PowerState for Unconfigured {}\n");
+        s.push_str("impl PowerState for ConstLat {}\n");
+        s.push_str("impl PowerState for LowPower {}\n\n");
 
-        s.push_str("        #[repr(u8)]\n");
-        s.push_str("        #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
-        s.push_str("        pub enum PowerMode {\n");
-        s.push_str("            ConstantLatency = 0,\n");
-        s.push_str("            LowPower = 1,\n");
-        s.push_str("        }\n\n");
+        s.push_str("#[repr(u8)]\n");
+        s.push_str("#[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("pub enum PowerMode {\n");
+        s.push_str("    ConstantLatency = 0,\n");
+        s.push_str("    LowPower = 1,\n");
+        s.push_str("}\n\n");
 
-        s.push_str(&format!("        pub struct Power<'a, S: PowerState> {{\n"));
-        s.push_str(&format!("            power: &'a {}Register,\n", type_name));
-        s.push_str("            _state: PhantomData<S>,\n");
-        s.push_str("        }\n\n");
+        s.push_str(&format!("pub struct Power<'a, S: PowerState> {{\n"));
+        s.push_str(&format!("    power: &'a {}Register,\n", type_name));
+        s.push_str("    _state: PhantomData<S>,\n");
+        s.push_str("}\n\n");
 
-        s.push_str("        impl<'a, S: PowerState> Power<'a, S> {\n");
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn is_power_failure_warning(&self) -> bool {\n");
+        s.push_str("impl<'a, S: PowerState> Power<'a, S> {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn is_power_failure_warning(&self) -> bool {\n");
         s.push_str(&format!(
-            "                self.power.{}.read() != 0\n",
+            "        self.power.{}.read() != 0\n",
             self.field_events_pofwarn
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn is_sleep_enter(&self) -> bool {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn is_sleep_enter(&self) -> bool {\n");
         s.push_str(&format!(
-            "                self.power.{}.read() != 0\n",
+            "        self.power.{}.read() != 0\n",
             self.field_events_sleepenter
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn is_sleep_exit(&self) -> bool {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn is_sleep_exit(&self) -> bool {\n");
         s.push_str(&format!(
-            "                self.power.{}.read() != 0\n",
+            "        self.power.{}.read() != 0\n",
             self.field_events_sleepexit
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn is_usb_detected(&self) -> bool {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn is_usb_detected(&self) -> bool {\n");
         s.push_str(&format!(
-            "                self.power.{}.read() != 0\n",
+            "        self.power.{}.read() != 0\n",
             self.field_events_usbdetected
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn is_usb_removed(&self) -> bool {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn is_usb_removed(&self) -> bool {\n");
         s.push_str(&format!(
-            "                self.power.{}.read() != 0\n",
+            "        self.power.{}.read() != 0\n",
             self.field_events_usbremoved
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn is_usb_power_ready(&self) -> bool {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn is_usb_power_ready(&self) -> bool {\n");
         s.push_str(&format!(
-            "                self.power.{}.read() != 0\n",
+            "        self.power.{}.read() != 0\n",
             self.field_events_usbpwrrdy
         ));
-        s.push_str("            }\n");
-        s.push_str("        }\n\n");
+        s.push_str("    }\n");
+        s.push_str("}\n\n");
 
-        s.push_str("        impl<'a> Power<'a, Unconfigured> {\n");
-        s.push_str("            #[inline(always)]\n");
+        s.push_str("impl<'a> Power<'a, Unconfigured> {\n");
+        s.push_str("    #[inline(always)]\n");
         s.push_str(&format!(
-            "            pub unsafe fn steal() -> Power<'static, Unconfigured> {{\n"
+            "    pub unsafe fn steal() -> Power<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "                Power {{ power: &*pac::peripherals::{}::PTR, _state: PhantomData }}\n",
+            "        Power {{ power: &*crate::pac::peripherals::{}::PTR, _state: PhantomData }}\n",
             self.periph_mod
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
         s.push_str(&format!(
-            "            pub fn power() -> Power<'static, Unconfigured> {{\n"
+            "    pub fn power() -> Power<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "                Power {{ power: unsafe {{ &*pac::peripherals::{}::PTR }}, _state: PhantomData }}\n",
+            "        Power {{ power: unsafe {{ &*crate::pac::peripherals::{}::PTR }}, _state: PhantomData }}\n",
             self.periph_mod
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn enable_constant_latency(self) -> Power<'a, ConstLat> {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn enable_constant_latency(self) -> Power<'a, ConstLat> {\n");
         s.push_str(&format!(
-            "                self.power.{}.write(1);\n",
+            "        self.power.{}.write(1);\n",
             self.field_tasks_constlat
         ));
         s.push_str(&format!(
-            "                Power {{ power: self.power, _state: PhantomData }}\n"
+            "        Power {{ power: self.power, _state: PhantomData }}\n"
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn enable_low_power(self) -> Power<'a, LowPower> {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn enable_low_power(self) -> Power<'a, LowPower> {\n");
         s.push_str(&format!(
-            "                self.power.{}.write(1);\n",
+            "        self.power.{}.write(1);\n",
             self.field_tasks_lowpwr
         ));
         s.push_str(&format!(
-            "                Power {{ power: self.power, _state: PhantomData }}\n"
+            "        Power {{ power: self.power, _state: PhantomData }}\n"
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn enable_interrupts(&mut self) {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn enable_interrupts(&mut self) {\n");
         s.push_str(&format!(
-            "                self.power.{}.write(0x3F);\n",
+            "        self.power.{}.write(0x3F);\n",
             self.field_intenset
         ));
-        s.push_str("            }\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn disable_interrupts(&mut self) {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn disable_interrupts(&mut self) {\n");
         s.push_str(&format!(
-            "                self.power.{}.write(0x3F);\n",
+            "        self.power.{}.write(0x3F);\n",
             self.field_intenclr
         ));
-        s.push_str("            }\n");
-        s.push_str("        }\n\n");
+        s.push_str("    }\n");
+        s.push_str("}\n\n");
 
-        s.push_str(&format!("        impl<'a> Power<'a, ConstLat> {{\n"));
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn to_unconfigured(self) -> Power<'a, Unconfigured> {\n");
+        s.push_str(&format!("impl<'a> Power<'a, ConstLat> {{\n"));
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn to_unconfigured(self) -> Power<'a, Unconfigured> {\n");
         s.push_str(&format!(
-            "                Power {{ power: self.power, _state: PhantomData }}\n"
+            "        Power {{ power: self.power, _state: PhantomData }}\n"
         ));
-        s.push_str("            }\n");
-        s.push_str("        }\n\n");
+        s.push_str("    }\n");
+        s.push_str("}\n\n");
 
-        s.push_str(&format!("        impl<'a> Power<'a, LowPower> {{\n"));
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn to_unconfigured(self) -> Power<'a, Unconfigured> {\n");
+        s.push_str(&format!("impl<'a> Power<'a, LowPower> {{\n"));
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn to_unconfigured(self) -> Power<'a, Unconfigured> {\n");
         s.push_str(&format!(
-            "                Power {{ power: self.power, _state: PhantomData }}\n"
+            "        Power {{ power: self.power, _state: PhantomData }}\n"
         ));
-        s.push_str("            }\n");
-        s.push_str("        }\n\n");
+        s.push_str("    }\n");
+        s.push_str("}\n\n");
 
-        s.push_str("        impl<'a> Power<'a, ConstLat> {\n");
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn enable_low_power(self) -> Power<'a, LowPower> {\n");
+        s.push_str("impl<'a> Power<'a, ConstLat> {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn enable_low_power(self) -> Power<'a, LowPower> {\n");
         s.push_str(&format!(
-            "                self.power.{}.write(1);\n",
+            "        self.power.{}.write(1);\n",
             self.field_tasks_lowpwr
         ));
         s.push_str(&format!(
-            "                Power {{ power: self.power, _state: PhantomData }}\n"
+            "        Power {{ power: self.power, _state: PhantomData }}\n"
         ));
-        s.push_str("            }\n");
-        s.push_str("        }\n\n");
+        s.push_str("    }\n");
+        s.push_str("}\n\n");
 
-        s.push_str("        impl<'a> Power<'a, LowPower> {\n");
-        s.push_str("            #[inline(always)]\n");
-        s.push_str("            pub fn enable_constant_latency(self) -> Power<'a, ConstLat> {\n");
+        s.push_str("impl<'a> Power<'a, LowPower> {\n");
+        s.push_str("    #[inline(always)]\n");
+        s.push_str("    pub fn enable_constant_latency(self) -> Power<'a, ConstLat> {\n");
         s.push_str(&format!(
-            "                self.power.{}.write(1);\n",
+            "        self.power.{}.write(1);\n",
             self.field_tasks_constlat
         ));
         s.push_str(&format!(
-            "                Power {{ power: self.power, _state: PhantomData }}\n"
+            "        Power {{ power: self.power, _state: PhantomData }}\n"
         ));
-        s.push_str("            }\n");
-        s.push_str("        }\n");
-
         s.push_str("    }\n");
+        s.push_str("}\n");
 
         Ok(s)
     }

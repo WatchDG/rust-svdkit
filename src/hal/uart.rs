@@ -35,60 +35,55 @@ impl UartInfo {
         let mut s = String::new();
         let uart_ty = sanitize_type_name(&self.periph_mod);
 
-        s.push_str(&format!("    pub mod {} {{\n", self.hal_mod));
-        s.push_str("        use super::pac;\n\n");
         s.push_str(&format!(
-            "        pub type {uart_ty} = pac::peripherals::{}::{uart_ty};\n\n",
+            "pub type {uart_ty} = crate::pac::peripherals::{}::{uart_ty};\n\n",
             self.periph_mod,
         ));
 
-        s.push_str("        use core::marker::PhantomData;\n\n");
+        s.push_str("use core::marker::PhantomData;\n\n");
 
-        s.push_str("        pub trait UartState {}\n");
-        s.push_str("        pub struct Unconfigured;\n");
-        s.push_str("        pub struct Configured;\n");
-        s.push_str("        pub struct Idle;\n");
-        s.push_str("        pub struct Receiving;\n");
-        s.push_str("        pub struct Transmitting;\n\n");
-        s.push_str("        impl UartState for Unconfigured {}\n");
-        s.push_str("        impl UartState for Configured {}\n");
-        s.push_str("        impl UartState for Idle {}\n");
-        s.push_str("        impl UartState for Receiving {}\n");
-        s.push_str("        impl UartState for Transmitting {}\n\n");
+        s.push_str("pub trait UartState {}\n");
+        s.push_str("pub struct Unconfigured;\n");
+        s.push_str("pub struct Configured;\n");
+        s.push_str("pub struct Idle;\n");
+        s.push_str("pub struct Receiving;\n");
+        s.push_str("pub struct Transmitting;\n\n");
+        s.push_str("impl UartState for Unconfigured {}\n");
+        s.push_str("impl UartState for Configured {}\n");
+        s.push_str("impl UartState for Idle {}\n");
+        s.push_str("impl UartState for Receiving {}\n");
+        s.push_str("impl UartState for Transmitting {}\n\n");
 
-        s.push_str("        #[inline(always)]\n");
+        s.push_str("#[inline(always)]\n");
         s.push_str(&format!(
-            "        pub unsafe fn steal() -> &'static {uart_ty} {{\n"
+            "pub unsafe fn steal() -> &'static {uart_ty} {{\n"
         ));
         s.push_str(&format!(
-            "            &*pac::peripherals::{}::PTR\n",
+            "    &*crate::pac::peripherals::{}::PTR\n",
             self.periph_mod
         ));
-        s.push_str("        }\n\n");
+        s.push_str("}\n\n");
 
         s.push_str(&format!(
-            "        pub fn uart() -> Uart<'static, Unconfigured> {{\n"
+            "pub fn uart() -> Uart<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "            Uart {{ u: unsafe {{ &*pac::peripherals::{}::PTR }}, _state: PhantomData }}\n",
+            "    Uart {{ u: unsafe {{ &*crate::pac::peripherals::{}::PTR }}, _state: PhantomData }}\n",
             self.periph_mod
         ));
-        s.push_str("        }\n\n");
+        s.push_str("}\n\n");
 
         let baudrate_alias = sanitize_type_name("BAUDRATE");
         let pac_baudrate_ty =
             pac_enum_type_name_for_field(&self.periph_name, "BAUDRATE", &self.baudrate_field);
         if let Some(ty) = &pac_baudrate_ty {
-            s.push_str(&indent_block(
-                &format!(
-                    "pub use super::super::pac::peripherals::{}::enums::{ty} as {baudrate_alias};\n",
-                    self.periph_mod
-                ),
-                8,
+            s.push_str(&format!(
+                "pub use crate::pac::peripherals::{}::enums::{ty} as {baudrate_alias};\n",
+                self.periph_mod
             ));
             s.push('\n');
         } else if let Some(src) = render_field_enum("BAUDRATE", &self.baudrate_field) {
-            s.push_str(&indent_block(&src, 8));
+            s.push_str(&indent_block(&src, 4));
             s.push('\n');
         }
 
