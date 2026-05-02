@@ -19,19 +19,19 @@ pub fn emit_single_file(ir: &PacIr, plan: &GenerationPlan) -> Result<String> {
     out.writeln("")?;
     out.writeln("")?;
 
-    out.writeln("pub mod traits {")?;
+    out.writeln("pub mod common_traits {")?;
     out.writeln(&static_files::generate_traits_file())?;
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("pub mod types {")?;
+    out.writeln("pub mod common_types {")?;
     out.writeln(&static_files::generate_types_file())?;
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("pub mod enums {")?;
+    out.writeln("pub mod common_enums {")?;
     out.writeln(&runtime::generate_enums_file(ir))?;
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("pub mod constants {")?;
+    out.writeln("pub mod common_constants {")?;
     out.writeln(&runtime::generate_constants_file(ir))?;
     out.writeln("}")?;
     out.writeln("")?;

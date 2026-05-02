@@ -294,7 +294,7 @@ impl RegValue for u64 {
 
 pub fn generate_types_file() -> String {
     r#"use core::marker::PhantomData;
-use super::traits::RegValue;
+use super::common_traits::RegValue;
 
 #[repr(transparent)]
 pub struct RO<T>(core::cell::UnsafeCell<T>);
@@ -636,13 +636,13 @@ pub fn generate_device_dir_with_options(
         lines.push("#![no_std]".to_string());
         lines.push("#![allow(unsafe_op_in_unsafe_fn)]".to_string());
         lines.push("".to_string());
-        lines.push("pub mod traits;".to_string());
-        lines.push("pub mod types;".to_string());
-        lines.push("pub mod enums;".to_string());
-        lines.push("pub mod constants;".to_string());
+        lines.push("pub mod common_traits;".to_string());
+        lines.push("pub mod common_types;".to_string());
+        lines.push("pub mod common_enums;".to_string());
+        lines.push("pub mod common_constants;".to_string());
         lines.push("".to_string());
         lines.push("#[macro_use]".to_string());
-        lines.push("pub mod macros;".to_string());
+        lines.push("pub mod common_macros;".to_string());
         lines.push("".to_string());
         lines.push("pub mod peripherals;".to_string());
         lines.push("".to_string());
@@ -656,27 +656,27 @@ pub fn generate_device_dir_with_options(
     });
 
     files.push(GeneratedFile {
-        file_name: "macros.rs".to_string(),
+        file_name: "common_macros.rs".to_string(),
         content: generate_macros_file(),
     });
 
     files.push(GeneratedFile {
-        file_name: "traits.rs".to_string(),
+        file_name: "common_traits.rs".to_string(),
         content: generate_traits_file(),
     });
 
     files.push(GeneratedFile {
-        file_name: "types.rs".to_string(),
+        file_name: "common_types.rs".to_string(),
         content: generate_types_file(),
     });
 
     files.push(GeneratedFile {
-        file_name: "enums.rs".to_string(),
+        file_name: "common_enums.rs".to_string(),
         content: generate_enums_file(device),
     });
 
     files.push(GeneratedFile {
-        file_name: "constants.rs".to_string(),
+        file_name: "common_constants.rs".to_string(),
         content: generate_constants_file(device),
     });
 
@@ -1025,7 +1025,7 @@ fn generate_peripheral_file(
         if !used.is_empty() || has_once {
             let mut imports = String::new();
             if !used.is_empty() {
-                let import = format!("use super::super::super::types::{{{}}};", used.join(", "));
+                let import = format!("use super::super::super::common_types::{{{}}};", used.join(", "));
                 imports.push_str(&format!("{}\n", import));
             }
             if has_once {
@@ -1208,7 +1208,7 @@ fn generate_cluster_files(
         used_reg_types.push("Unwritten");
     }
     if !used_reg_types.is_empty() {
-        regs_imports.push_str(&format!("use {regs_root_prefix}types::{{{}}};\n", used_reg_types.join(", ")));
+        regs_imports.push_str(&format!("use {regs_root_prefix}common_types::{{{}}};\n", used_reg_types.join(", ")));
     }
     if !regs_imports.is_empty() {
         regs_out.s = format!("{}{}", regs_imports, regs_out.s);
@@ -1226,7 +1226,7 @@ fn generate_cluster_files(
     if mod_out.s.contains("Unwritten") { mod_ts.push("Unwritten"); }
     if mod_out.s.contains("Written") { mod_ts.push("Written"); }
     if !mod_ts.is_empty() {
-        mod_imports.push_str(&format!("use {mod_root_prefix}types::{{{}}};\n", mod_ts.join(", ")));
+        mod_imports.push_str(&format!("use {mod_root_prefix}common_types::{{{}}};\n", mod_ts.join(", ")));
     }
     if mod_out.s.contains("enums::") {
         mod_imports.push_str(&format!("use {mod_enums_prefix}enums;\n"));
@@ -1318,19 +1318,19 @@ pub fn generate_device_rs_with_options(
     out.writeln("")?;
 
     out.writeln("")?;
-    out.writeln("pub mod traits {")?;
+    out.writeln("pub mod common_traits {")?;
     out.writeln(&generate_traits_file())?;
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("pub mod types {")?;
+    out.writeln("pub mod common_types {")?;
     out.writeln(&generate_types_file())?;
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("pub mod enums {")?;
+    out.writeln("pub mod common_enums {")?;
     out.writeln(&generate_enums_file(device))?;
     out.writeln("}")?;
     out.writeln("")?;
-    out.writeln("pub mod constants {")?;
+    out.writeln("pub mod common_constants {")?;
     out.writeln(&generate_constants_file(device))?;
     out.writeln("}")?;
     out.writeln("")?;

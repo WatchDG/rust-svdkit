@@ -17,13 +17,13 @@ pub fn emit_directory(ir: &PacIr, plan: &GenerationPlan) -> Result<crate::pac::G
         lines.push("#![no_std]".to_string());
         lines.push("#![allow(unsafe_op_in_unsafe_fn)]".to_string());
         lines.push("".to_string());
-        lines.push("pub mod traits;".to_string());
-        lines.push("pub mod types;".to_string());
-        lines.push("pub mod enums;".to_string());
-        lines.push("pub mod constants;".to_string());
+        lines.push("pub mod common_traits;".to_string());
+        lines.push("pub mod common_types;".to_string());
+        lines.push("pub mod common_enums;".to_string());
+        lines.push("pub mod common_constants;".to_string());
         lines.push("".to_string());
         lines.push("#[macro_use]".to_string());
-        lines.push("pub mod macros;".to_string());
+        lines.push("pub mod common_macros;".to_string());
         lines.push("".to_string());
         lines.push("pub mod peripherals;".to_string());
         lines.push("".to_string());
@@ -37,23 +37,23 @@ pub fn emit_directory(ir: &PacIr, plan: &GenerationPlan) -> Result<crate::pac::G
     });
 
     files.push(GeneratedFile {
-        file_name: "macros.rs".to_string(),
+        file_name: "common_macros.rs".to_string(),
         content: static_files::generate_macros_file(),
     });
     files.push(GeneratedFile {
-        file_name: "traits.rs".to_string(),
+        file_name: "common_traits.rs".to_string(),
         content: static_files::generate_traits_file(),
     });
     files.push(GeneratedFile {
-        file_name: "types.rs".to_string(),
+        file_name: "common_types.rs".to_string(),
         content: static_files::generate_types_file(),
     });
     files.push(GeneratedFile {
-        file_name: "enums.rs".to_string(),
+        file_name: "common_enums.rs".to_string(),
         content: runtime::generate_enums_file(ir),
     });
     files.push(GeneratedFile {
-        file_name: "constants.rs".to_string(),
+        file_name: "common_constants.rs".to_string(),
         content: runtime::generate_constants_file(ir),
     });
 
