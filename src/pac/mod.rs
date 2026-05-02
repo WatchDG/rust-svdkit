@@ -4069,6 +4069,8 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.writeln("")?;
 
     // Interrupt table: dense array [0..num_irqs).
+    // NOTE: No #[used] here! User-provided handlers will ensure the array is linked.
+    // This allows user code to override interrupt handlers via weak symbols.
     let mut irq_slots: Vec<String> = vec!["DefaultHandler".to_string(); num_irqs as usize];
     for (n, name, _desc) in &irqs {
         if (*n as usize) < irq_slots.len() {
@@ -4076,12 +4078,8 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
         }
     }
 
-    out.writeln("#[used]")?;
     out.writeln("#[unsafe(link_section = \".vector_table.interrupts\")]")?;
-    out.writeln(&format!(
-        "pub static __INTERRUPTS: [Vector; {num}usize] = [",
-        num = num_irqs
-    ))?;
+    out.writeln("pub static __INTERRUPTS: [Vector; 48usize] = [")?;
     out.indent();
     for h in &irq_slots {
         out.writeln(&format!("Vector {{ handler: {h} }},",))?;
