@@ -7,7 +7,12 @@ use std::path::Path;
 
 pub mod async_rt;
 pub mod clock;
+pub mod common;
+pub mod config;
+pub mod emitter;
 pub mod gpio;
+pub mod ir;
+pub mod analyzer;
 pub mod power;
 pub mod timer;
 // pub mod uart;
@@ -24,6 +29,8 @@ pub struct GeneratedDir {
     pub path: String,
     pub files: Vec<GeneratedFile>,
 }
+
+// ─── Old API (backward compatible) ───────────────────────────────
 
 pub fn generate_device_hal_file(device: &svd::Device) -> Result<GeneratedFile> {
     let stem = sanitize_file_stem(&device.name);
@@ -63,11 +70,6 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
     if !timers.is_empty() {
         lib_lines.push("pub mod timer;".to_string());
     }
-
-    // let uarts = uart::collect_uarts(device);
-    // if !uarts.is_empty() {
-    //     lib_lines.push("pub mod uart;".to_string());
-    // }
 
     let usb_devices = usb::collect_usb_devices(device);
     let has_usb = !usb_devices.is_empty();
@@ -145,24 +147,6 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
             content,
         });
     }
-
-    // UART generation disabled
-    // if !timers.is_empty() {
-    //     let mut content = String::new();
-    //     content.push_str("#[allow(dead_code)]\n");
-    //     content.push_str("#[allow(non_snake_case)]\n\n");
-    //     content.push_str("use super::pac;\n\n");
-    //
-    //     for u in uarts {
-    //         content.push_str(&u.render()?);
-    //         content.push('\n');
-    //     }
-    //
-    //     files.push(GeneratedFile {
-    //         file_name: "uart/mod.rs".to_string(),
-    //         content,
-    //     });
-    // }
 
     if has_usb {
         let mut content = String::new();
@@ -266,9 +250,7 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
     let timers = timer::collect_timers(device);
     let has_timers = !timers.is_empty();
     if has_timers {
-        if has_gpio_ports {
-            out.push('\n');
-        }
+        if has_gpio_ports { out.push('\n'); }
         out.push_str("pub mod timer {\n");
         out.push_str("    use super::pac;\n\n");
         for t in &timers {
@@ -281,9 +263,7 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
     let usb_devices = usb::collect_usb_devices(device);
     let has_usb = !usb_devices.is_empty();
     if has_usb {
-        if has_gpio_ports || has_timers {
-            out.push('\n');
-        }
+        if has_gpio_ports || has_timers { out.push('\n'); }
         out.push_str("pub mod usb {\n");
         out.push_str("    use super::pac;\n\n");
         for usb in &usb_devices {
@@ -296,9 +276,7 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
     let clocks = clock::collect_clocks(device);
     let has_clocks = !clocks.is_empty();
     if has_clocks {
-        if has_gpio_ports || has_timers || has_usb {
-            out.push('\n');
-        }
+        if has_gpio_ports || has_timers || has_usb { out.push('\n'); }
         out.push_str("pub mod clock {\n");
         out.push_str("    use super::pac;\n\n");
         for c in clocks {
@@ -310,9 +288,7 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
 
     let power_devices = power::collect_power_devices(device);
     if !power_devices.is_empty() {
-        if has_gpio_ports || has_timers || has_usb || has_clocks {
-            out.push('\n');
-        }
+        if has_gpio_ports || has_timers || has_usb || has_clocks { out.push('\n'); }
         out.push_str("pub mod power {\n");
         out.push_str("    use super::pac;\n\n");
         for p in power_devices {
@@ -325,18 +301,63 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
     Ok(out)
 }
 
-pub fn sanitize_file_stem(s: &str) -> String {
-    let mut out = String::new();
-    for ch in s.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-            out.push(ch);
-        } else {
-            out.push('_');
+// ─── New API (three-phase) ───────────────────────────────────────
+
+pub fn generate_device_hal_dir_new(device: &svd::Device, options: config::HalOptions) -> Result<GeneratedDir> {
+    let ir = analyzer::analyze(device);
+    let stem = common::sanitize_file_stem(&ir.device_info_name(device));
+    let pac_crate = format!("{stem}_pac");
+    let dir_name = format!("{stem}_hal");
+
+    let mut modules = Vec::new();
+    if options.emit_gpio && !ir.gpio_ports.is_empty() { modules.push(config::HalModulePlan::Gpio); }
+    if options.emit_timer && !ir.timers.is_empty() { modules.push(config::HalModulePlan::Timer); }
+    if options.emit_clock && !ir.clocks.is_empty() { modules.push(config::HalModulePlan::Clock); }
+    if options.emit_power && !ir.power_devices.is_empty() { modules.push(config::HalModulePlan::Power); }
+    if options.emit_usb && !ir.usb_devices.is_empty() { modules.push(config::HalModulePlan::Usb); }
+
+    let plan = config::HalGenerationPlan {
+        output_mode: config::HalOutputMode::Directory,
+        options,
+        pac_crate_name: pac_crate,
+        dir_name,
+        enabled_modules: modules,
+    };
+
+    emitter::emit(&ir, &plan)
+}
+
+pub fn generate_device_hal_file_new(device: &svd::Device, options: config::HalOptions) -> Result<GeneratedFile> {
+    let dir = generate_device_hal_dir_new(device, options)?;
+    let stem = common::sanitize_file_stem(&device.name);
+    let file_name = format!("{stem}_hal.rs");
+    let content = dir.files.iter()
+        .find(|f| f.file_name.ends_with(".rs"))
+        .map(|f| f.content.clone())
+        .unwrap_or_default();
+    Ok(GeneratedFile { file_name, content })
+}
+
+pub fn write_device_hal_dir_new(device: &svd::Device, out_dir: &Path, options: config::HalOptions) -> Result<std::path::PathBuf> {
+    let generated = generate_device_hal_dir_new(device, options)?;
+    let dir_path = out_dir.join(&generated.path);
+    std::fs::create_dir_all(&dir_path)?;
+    for file in generated.files {
+        let file_path = dir_path.join(&file.file_name);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)?;
         }
+        std::fs::write(&file_path, file.content)?;
     }
-    if out.is_empty() {
-        "device".to_string()
-    } else {
-        out
+    Ok(dir_path)
+}
+
+pub fn sanitize_file_stem(s: &str) -> String {
+    common::sanitize_file_stem(s)
+}
+
+impl ir::HalIr {
+    fn device_info_name(&self, device: &svd::Device) -> String {
+        device.name.clone()
     }
 }
