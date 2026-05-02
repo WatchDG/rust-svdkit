@@ -4,7 +4,7 @@ use crate::{Result, svd};
 pub struct GpioPortInfo {
     periph_name: String,
     periph_mod: String,
-    hal_mod: String,
+    pub hal_mod: String,
     field_outset: String,
     field_outclr: String,
     field_out: String,
@@ -18,33 +18,38 @@ impl GpioPortInfo {
     pub fn render(&self) -> Result<String> {
         let mut s = String::new();
         let port_ty = gpio_port_type_name(&self.periph_name);
+        let mod_name = sanitize_module_name(&self.periph_name).to_lowercase();
+
+        s.push_str(&format!("pub mod {mod_name} {{\n"));
+        s.push_str("    #[allow(dead_code)]\n");
+        s.push_str("    #[allow(non_snake_case)]\n\n");
 
         s.push_str(&format!(
-            "pub type {port_ty} = crate::pac::peripherals::{}::{port_ty};\n\n",
+            "    pub type {port_ty} = crate::pac::peripherals::{}::{port_ty};\n\n",
             self.periph_mod,
         ));
-        s.push_str("use core::marker::PhantomData;\n\n");
+        s.push_str("    use core::marker::PhantomData;\n\n");
 
-        s.push_str("pub trait PinState {}\n");
-        s.push_str("pub struct Unconfigured;\n\n");
-        s.push_str("impl PinState for Unconfigured {}\n\n");
+        s.push_str("    pub trait PinState {}\n");
+        s.push_str("    pub struct Unconfigured;\n\n");
+        s.push_str("    impl PinState for Unconfigured {}\n\n");
 
-        s.push_str("#[repr(u8)]\n");
-        s.push_str("#[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
-        s.push_str("pub enum Level {\n");
-        s.push_str("    Low = 0,\n");
-        s.push_str("    High = 1,\n");
-        s.push_str("}\n\n");
+        s.push_str("    #[repr(u8)]\n");
+        s.push_str("    #[derive(Copy, Clone, Debug, PartialEq, Eq)]\n");
+        s.push_str("    pub enum Level {\n");
+        s.push_str("        Low = 0,\n");
+        s.push_str("        High = 1,\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("#[inline(always)]\n");
+        s.push_str("    #[inline(always)]\n");
         s.push_str(&format!(
-            "pub unsafe fn steal() -> &'static {port_ty} {{\n"
+            "    pub unsafe fn steal() -> &'static {port_ty} {{\n"
         ));
         s.push_str(&format!(
-            "    &*crate::pac::peripherals::{}::PTR\n",
+            "        &*crate::pac::peripherals::{}::PTR\n",
             self.periph_mod
         ));
-        s.push_str("}\n\n");
+        s.push_str("    }\n\n");
 
         let field_enums = [
             ("DIR", "Dir", String::new()),
@@ -68,14 +73,14 @@ impl GpioPortInfo {
                 pac_enum_type_name_for_field(&self.periph_name, &self.pin_cnf_reg_path, f);
             if let Some(ty) = &pac_enum_ty {
                 s.push_str(&format!(
-                    "pub use crate::pac::peripherals::{}::enums::{} as {};\n",
+                    "    pub use crate::pac::peripherals::{}::enums::{} as {};\n",
                     self.periph_mod, ty, alias
                 ));
                 generated_any = true;
             } else if let Some(e) = render_field_enum(fname, f) {
-                s.push_str(&indent_block(&e, 4));
+                s.push_str(&indent_block(&e, 8));
                 if !extra.is_empty() {
-                    s.push_str(&indent_block(&extra, 4));
+                    s.push_str(&indent_block(&extra, 8));
                 }
                 generated_any = true;
             }
@@ -124,210 +129,211 @@ impl GpioPortInfo {
             });
 
         s.push_str(&format!(
-            "pub struct Pin<'a, S: PinState> {{\n    port: &'a {port_ty},\n    pin: u8,\n    _state: PhantomData<S>,\n}}\n\n"
+            "    pub struct Pin<'a, S: PinState> {{\n        port: &'a {port_ty},\n        pin: u8,\n        _state: PhantomData<S>,\n    }}\n\n"
         ));
 
-        s.push_str("#[inline(always)]\n");
+        s.push_str("    #[inline(always)]\n");
         s.push_str(&format!(
-            "pub unsafe fn pin(pin: u8) -> Pin<'static, Unconfigured> {{\n"
+            "    pub unsafe fn pin(pin: u8) -> Pin<'static, Unconfigured> {{\n"
         ));
         s.push_str(&format!(
-            "    Pin {{ port: &*crate::pac::peripherals::{}::PTR, pin, _state: PhantomData }}\n",
+            "        Pin {{ port: &*crate::pac::peripherals::{}::PTR, pin, _state: PhantomData }}\n",
             self.periph_mod
         ));
-        s.push_str("}\n\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("pub struct PinConfigurator<'a> {\n");
-        s.push_str("    port: &'a ");
+        s.push_str("    pub struct PinConfigurator<'a> {\n");
+        s.push_str("        port: &'a ");
         s.push_str(&port_ty);
         s.push_str(",\n");
-        s.push_str("    pin: u8,\n");
-        s.push_str("    cnf: u32,\n");
-        s.push_str("    output: bool,\n");
-        s.push_str("}\n\n");
+        s.push_str("        pin: u8,\n");
+        s.push_str("        cnf: u32,\n");
+        s.push_str("        output: bool,\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("impl<'a> Pin<'a, Unconfigured> {\n");
-        s.push_str("    #[inline(always)]\n");
-        s.push_str("    pub fn configure(self) -> PinConfigurator<'a> {\n");
+        s.push_str("    impl<'a> Pin<'a, Unconfigured> {\n");
+        s.push_str("        #[inline(always)]\n");
+        s.push_str("        pub fn configure(self) -> PinConfigurator<'a> {\n");
         s.push_str(&format!(
-            "        let cnf = self.port.{}[self.pin as usize].read();\n",
+            "            let cnf = self.port.{}[self.pin as usize].read();\n",
             self.field_pin_cnf
         ));
-        s.push_str("        PinConfigurator { port: self.port, pin: self.pin, cnf, output: false }\n");
-        s.push_str("    }\n");
-        s.push_str("}\n\n");
+        s.push_str("            PinConfigurator { port: self.port, pin: self.pin, cnf, output: false }\n");
+        s.push_str("        }\n");
+        s.push_str("    }\n\n");
 
-        s.push_str("impl<'a> PinConfigurator<'a> {\n");
+        s.push_str("    impl<'a> PinConfigurator<'a> {\n");
 
         if let Some((lsb, mask, out_val)) = dir_info {
-            s.push_str("    #[inline(always)]\n");
-            s.push_str("    pub fn dir(self, v: Dir) -> Self {\n");
+            s.push_str("        #[inline(always)]\n");
+            s.push_str("        pub fn dir(self, v: Dir) -> Self {\n");
             s.push_str(&format!(
-                "        let output = (v as u32) == {out_val}u32;\n"
+                "            let output = (v as u32) == {out_val}u32;\n"
             ));
             if lsb == 0 {
                 s.push_str(&format!(
-                    "        let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
+                    "            let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
                 ));
             } else {
                 s.push_str(&format!(
-                    "        let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                    "            let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
             s.push_str(
-                "        PinConfigurator { port: self.port, pin: self.pin, cnf, output }\n",
+                "            PinConfigurator { port: self.port, pin: self.pin, cnf, output }\n",
             );
-            s.push_str("    }\n\n");
+            s.push_str("        }\n\n");
         }
 
         if let Some((lsb, mask)) = pull_info {
-            s.push_str("    #[inline(always)]\n");
-            s.push_str("    pub fn pull(self, v: Pull) -> Self {\n");
+            s.push_str("        #[inline(always)]\n");
+            s.push_str("        pub fn pull(self, v: Pull) -> Self {\n");
             if lsb == 0 {
                 s.push_str(&format!(
-                    "        let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
+                    "            let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
                 ));
             } else {
                 s.push_str(&format!(
-                    "        let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                    "            let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
-            s.push_str("        PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
-            s.push_str("    }\n\n");
+            s.push_str("            PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
+            s.push_str("        }\n\n");
         }
 
         if let Some((lsb, mask)) = drive_info {
-            s.push_str("    #[inline(always)]\n");
-            s.push_str("    pub fn drive(self, v: Drive) -> Self {\n");
+            s.push_str("        #[inline(always)]\n");
+            s.push_str("        pub fn drive(self, v: Drive) -> Self {\n");
             if lsb == 0 {
                 s.push_str(&format!(
-                    "        let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
+                    "            let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
                 ));
             } else {
                 s.push_str(&format!(
-                    "        let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                    "            let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
-            s.push_str("        PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
-            s.push_str("    }\n\n");
+            s.push_str("            PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
+            s.push_str("        }\n\n");
         }
 
         if let Some((lsb, mask)) = sense_info {
-            s.push_str("    #[inline(always)]\n");
-            s.push_str("    pub fn sense(self, v: Sense) -> Self {\n");
+            s.push_str("        #[inline(always)]\n");
+            s.push_str("        pub fn sense(self, v: Sense) -> Self {\n");
             if lsb == 0 {
                 s.push_str(&format!(
-                    "        let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
+                    "            let cnf = (self.cnf & !0x{mask:X}u32) | (((v as u32) & 0x{mask:X}u32));\n"
                 ));
             } else {
                 s.push_str(&format!(
-                    "        let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
+                    "            let cnf = (self.cnf & !(0x{mask:X}u32 << {lsb})) | (((v as u32) & 0x{mask:X}u32) << {lsb});\n"
                 ));
             }
-            s.push_str("        PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
-            s.push_str("    }\n\n");
+            s.push_str("            PinConfigurator { port: self.port, pin: self.pin, cnf, output: self.output }\n");
+            s.push_str("        }\n\n");
         }
 
-        s.push_str("    #[inline(always)]\n");
-        s.push_str("    pub fn apply(self) -> PinConfigured<'a> {\n");
+        s.push_str("        #[inline(always)]\n");
+        s.push_str("        pub fn apply(self) -> PinConfigured<'a> {\n");
         s.push_str(&format!(
-            "        self.port.{}[self.pin as usize].write(self.cnf);\n",
+            "            self.port.{}[self.pin as usize].write(self.cnf);\n",
             self.field_pin_cnf
         ));
-        s.push_str("        if self.output {\n");
-        s.push_str("            PinConfigured::Output(PinOutput { port: self.port, pin: self.pin })\n");
-        s.push_str("        } else {\n");
-        s.push_str("            PinConfigured::Input(PinInput { port: self.port, pin: self.pin })\n");
+        s.push_str("            if self.output {\n");
+        s.push_str("                PinConfigured::Output(PinOutput { port: self.port, pin: self.pin })\n");
+        s.push_str("            } else {\n");
+        s.push_str("                PinConfigured::Input(PinInput { port: self.port, pin: self.pin })\n");
+        s.push_str("            }\n");
         s.push_str("        }\n");
-        s.push_str("    }\n");
-        s.push_str("}\n\n");
-
-        s.push_str("pub enum PinConfigured<'a> {\n");
-        s.push_str("    Input(PinInput<'a>),\n");
-        s.push_str("    Output(PinOutput<'a>),\n");
-        s.push_str("}\n\n");
-
-        s.push_str("pub struct PinInput<'a> {\n");
-        s.push_str("    port: &'a ");
-        s.push_str(&port_ty);
-        s.push_str(",\n");
-        s.push_str("    pin: u8,\n");
-        s.push_str("}\n\n");
-        s.push_str("impl<'a> PinInput<'a> {\n");
-        s.push_str("    #[inline(always)]\n");
-        s.push_str("    pub fn reconfigure(self) -> PinConfigurator<'a> {\n");
-        s.push_str(&format!(
-            "        let cnf = self.port.{}[self.pin as usize].read();\n",
-            self.field_pin_cnf
-        ));
-        s.push_str("        PinConfigurator { port: self.port, pin: self.pin, cnf, output: false }\n");
-        s.push_str("    }\n");
-        s.push_str("}\n\n");
-
-        s.push_str("pub struct PinOutput<'a> {\n");
-        s.push_str("    port: &'a ");
-        s.push_str(&port_ty);
-        s.push_str(",\n");
-        s.push_str("    pin: u8,\n");
-        s.push_str("}\n\n");
-        s.push_str("impl<'a> PinOutput<'a> {\n");
-        s.push_str("    #[inline(always)]\n");
-        s.push_str("    pub fn reconfigure(self) -> PinConfigurator<'a> {\n");
-        s.push_str(&format!(
-            "        let cnf = self.port.{}[self.pin as usize].read();\n",
-            self.field_pin_cnf
-        ));
-        s.push_str("        PinConfigurator { port: self.port, pin: self.pin, cnf, output: true }\n");
         s.push_str("    }\n\n");
 
+        s.push_str("    pub enum PinConfigured<'a> {\n");
+        s.push_str("        Input(PinInput<'a>),\n");
+        s.push_str("        Output(PinOutput<'a>),\n");
+        s.push_str("    }\n\n");
+
+        s.push_str("    pub struct PinInput<'a> {\n");
+        s.push_str("        port: &'a ");
+        s.push_str(&port_ty);
+        s.push_str(",\n");
+        s.push_str("        pin: u8,\n");
+        s.push_str("    }\n\n");
+        s.push_str("    impl<'a> PinInput<'a> {\n");
+        s.push_str("        #[inline(always)]\n");
+        s.push_str("        pub fn reconfigure(self) -> PinConfigurator<'a> {\n");
+        s.push_str(&format!(
+            "            let cnf = self.port.{}[self.pin as usize].read();\n",
+            self.field_pin_cnf
+        ));
+        s.push_str("            PinConfigurator { port: self.port, pin: self.pin, cnf, output: false }\n");
+        s.push_str("        }\n");
+        s.push_str("    }\n\n");
+
+        s.push_str("    pub struct PinOutput<'a> {\n");
+        s.push_str("        port: &'a ");
+        s.push_str(&port_ty);
+        s.push_str(",\n");
+        s.push_str("        pin: u8,\n");
+        s.push_str("    }\n\n");
+        s.push_str("    impl<'a> PinOutput<'a> {\n");
+        s.push_str("        #[inline(always)]\n");
+        s.push_str("        pub fn reconfigure(self) -> PinConfigurator<'a> {\n");
+        s.push_str(&format!(
+            "            let cnf = self.port.{}[self.pin as usize].read();\n",
+            self.field_pin_cnf
+        ));
+        s.push_str("            PinConfigurator { port: self.port, pin: self.pin, cnf, output: true }\n");
+        s.push_str("        }\n\n");
+
         if let Some(ref level_enum) = self.level_enum_name {
-            s.push_str("    #[inline(always)]\n");
-            s.push_str(&format!("    pub fn set_level(&self, level: crate::pac::peripherals::{}::enums::{level_enum}) {{\n", self.periph_mod));
+            s.push_str("        #[inline(always)]\n");
+            s.push_str(&format!("        pub fn set_level(&self, level: crate::pac::peripherals::{}::enums::{level_enum}) {{\n", self.periph_mod));
             s.push_str(&format!(
-                "        let mask = 1u32 << (self.pin as u32);\n"
+                "            let mask = 1u32 << (self.pin as u32);\n"
             ));
             s.push_str(&format!(
-                "        let new_value = (self.port.{}.read() & !mask) | ((level as u32) << (self.pin as u32));\n",
+                "            let new_value = (self.port.{}.read() & !mask) | ((level as u32) << (self.pin as u32));\n",
                 self.field_out
             ));
             s.push_str(&format!(
-                "        self.port.{}.write(new_value);\n",
+                "            self.port.{}.write(new_value);\n",
                 self.field_out
             ));
-            s.push_str("    }\n\n");
+            s.push_str("        }\n\n");
 
-            s.push_str("    #[inline(always)]\n");
-            s.push_str("    pub fn set_high(&self) {\n");
+            s.push_str("        #[inline(always)]\n");
+            s.push_str("        pub fn set_high(&self) {\n");
             s.push_str(&format!(
-                "        self.set_level(crate::pac::peripherals::{}::enums::{level_enum}::High);\n",
+                "            self.set_level(crate::pac::peripherals::{}::enums::{level_enum}::High);\n",
                 self.periph_mod
             ));
-            s.push_str("    }\n\n");
+            s.push_str("        }\n\n");
 
-            s.push_str("    #[inline(always)]\n");
-            s.push_str("    pub fn set_low(&self) {\n");
+            s.push_str("        #[inline(always)]\n");
+            s.push_str("        pub fn set_low(&self) {\n");
             s.push_str(&format!(
-                "        self.set_level(crate::pac::peripherals::{}::enums::{level_enum}::Low);\n",
+                "            self.set_level(crate::pac::peripherals::{}::enums::{level_enum}::Low);\n",
                 self.periph_mod
             ));
-            s.push_str("    }\n");
+            s.push_str("        }\n");
         } else {
-            s.push_str("    #[inline(always)]\n");
-            s.push_str("    pub fn set_high(&self) {\n");
+            s.push_str("        #[inline(always)]\n");
+            s.push_str("        pub fn set_high(&self) {\n");
             s.push_str(&format!(
-                "        self.port.{}.write(1u32 << (self.pin as u32));\n",
+                "            self.port.{}.write(1u32 << (self.pin as u32));\n",
                 self.field_outset
             ));
-            s.push_str("    }\n\n");
+            s.push_str("        }\n\n");
 
-            s.push_str("    #[inline(always)]\n");
-            s.push_str("    pub fn set_low(&self) {\n");
+            s.push_str("        #[inline(always)]\n");
+            s.push_str("        pub fn set_low(&self) {\n");
             s.push_str(&format!(
-                "        self.port.{}.write(1u32 << (self.pin as u32));\n",
+                "            self.port.{}.write(1u32 << (self.pin as u32));\n",
                 self.field_outclr
             ));
-            s.push_str("    }\n");
+            s.push_str("        }\n");
         }
+        s.push_str("    }\n");
         s.push_str("}\n");
 
         Ok(s)

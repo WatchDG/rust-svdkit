@@ -1,0 +1,29 @@
+[package]
+name = "nrf52840-led-blink"
+version = "0.1.0"
+edition = "2021"
+
+[build]
+target = "thumbv7em-none-eabihf"
+rustflags = [
+  "-C",
+  "link-arg=-L.",
+  "-C",
+  "link-arg=-Tlink.x",
+]
+
+[target.thumbv7em-none-eabihf]
+runner = "probe-rs run --chip nRF52840_xxAA"
+rustflags = [
+  "-C",
+  "link-arg=-L.",
+  "-C",
+  "link-arg=-Tlink.x",
+]
+
+[profile.dev]
+panic = "abort"
+
+[dependencies]
+nrf52840_pac = { path = "../../../generated/nrf52840/nrf52840_pac" }
+nrf52840_hal = { path = "../../../generated/nrf52840/nrf52840_hal" }

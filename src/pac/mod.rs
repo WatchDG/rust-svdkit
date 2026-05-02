@@ -3961,38 +3961,12 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
 
     out.writeln("unsafe extern \"C\" {")?;
     out.indent();
-    out.writeln("static mut __vector_table: u32;")?;
-    out.writeln("static mut _sidata: u32;")?;
-    out.writeln("static mut _sdata: u32;")?;
-    out.writeln("static mut _edata: u32;")?;
-    out.writeln("static mut _sbss: u32;")?;
-    out.writeln("static mut _ebss: u32;")?;
-    out.writeln("")?;
     out.writeln("fn main() -> !;")?;
-    out.writeln("")?;
-    // Core exception handlers (weak-provided by link.x).
-    out.writeln("fn NMI();")?;
-    out.writeln("fn HardFault();")?;
-    out.writeln("fn MemManage();")?;
-    out.writeln("fn BusFault();")?;
-    out.writeln("fn UsageFault();")?;
-    out.writeln("fn SVCall();")?;
-    out.writeln("fn DebugMonitor();")?;
-    out.writeln("fn PendSV();")?;
-    out.writeln("fn SysTick();")?;
-    out.writeln("")?;
-    // IRQ handlers (weak-provided by link.x).
-    for (_n, name, _desc) in &irqs {
-        out.writeln(&format!("fn {name}();"))?;
-    }
     out.dedent();
     out.writeln("}")?;
     out.writeln("")?;
 
-    // Default handler (used by linker PROVIDE(..) fallbacks).
-    //
-    // Note: we intentionally use `fn()` (not `fn() -> !`) so user IRQ handlers can
-    // naturally be written as `unsafe extern \"C\" fn NAME() { .. }`.
+    // Default handler (used as fallback for all undefined handlers).
     out.writeln("#[unsafe(no_mangle)]")?;
     out.writeln("pub unsafe extern \"C\" fn DefaultHandler() {")?;
     out.indent();
@@ -4005,33 +3979,30 @@ fn generate_rt_rs(device: &svd::Device) -> Result<String> {
     out.writeln("}")?;
     out.writeln("")?;
 
-    // Reset handler: init memory, optionally set VTOR, then call main().
+    // Core exception handlers - all default to DefaultHandler
+    let exception_names = ["NMI", "HardFault", "MemManage", "BusFault", "UsageFault", "SVCall", "DebugMonitor", "PendSV", "SysTick"];
+    for name in &exception_names {
+        out.writeln("#[unsafe(no_mangle)]")?;
+        out.writeln(&format!("pub unsafe extern \"C\" fn {name}() {{"));
+        out.writeln("    DefaultHandler()");
+        out.writeln("}")?;
+        out.writeln("")?;
+    }
+
+    // IRQ handlers - all default to DefaultHandler
+    let irq_names: Vec<String> = irqs.iter().map(|(_, name, _)| name.clone()).collect();
+    for name in &irq_names {
+        out.writeln("#[unsafe(no_mangle)]")?;
+        out.writeln(&format!("pub unsafe extern \"C\" fn {name}() {{"));
+        out.writeln("    DefaultHandler()");
+        out.writeln("}")?;
+        out.writeln("")?;
+    }
+
+    // Reset handler: just call main() - data/bss init handled by .data section placement
     out.writeln("#[unsafe(no_mangle)]")?;
     out.writeln("pub unsafe extern \"C\" fn Reset() {")?;
     out.indent();
-    out.writeln("let vtor = 0xE000_ED08usize as *mut u32;")?;
-    out.writeln("ptr::write_volatile(vtor, ptr::addr_of!(__vector_table) as u32);")?;
-    out.writeln("")?;
-    out.writeln("let mut src = ptr::addr_of!(_sidata) as *const u32;")?;
-    out.writeln("let mut dst = ptr::addr_of_mut!(_sdata) as *mut u32;")?;
-    out.writeln("let end = ptr::addr_of_mut!(_edata) as *mut u32;")?;
-    out.writeln("while (dst as usize) < (end as usize) {")?;
-    out.indent();
-    out.writeln("ptr::write(dst, ptr::read(src));")?;
-    out.writeln("dst = dst.add(1);")?;
-    out.writeln("src = src.add(1);")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
-    out.writeln("let mut bss = ptr::addr_of_mut!(_sbss) as *mut u32;")?;
-    out.writeln("let bss_end = ptr::addr_of_mut!(_ebss) as *mut u32;")?;
-    out.writeln("while (bss as usize) < (bss_end as usize) {")?;
-    out.indent();
-    out.writeln("ptr::write(bss, 0);")?;
-    out.writeln("bss = bss.add(1);")?;
-    out.dedent();
-    out.writeln("}")?;
-    out.writeln("")?;
     out.writeln("main()")?;
     out.dedent();
     out.writeln("}")?;
@@ -4101,6 +4072,14 @@ fn generate_link_x(device: &svd::Device) -> Result<String> {
     out.writeln("ENTRY(Reset)")?;
     out.writeln("")?;
     out.writeln("__stack_top = ORIGIN(RAM) + LENGTH(RAM);")?;
+    out.writeln("")?;
+
+    // Memory section symbols - weak defaults
+    out.writeln("PROVIDE(_sidata = 0);")?;
+    out.writeln("PROVIDE(_sdata = 0);")?;
+    out.writeln("PROVIDE(_edata = 0);")?;
+    out.writeln("PROVIDE(_sbss = 0);")?;
+    out.writeln("PROVIDE(_ebss = 0);")?;
     out.writeln("")?;
 
     // Weak defaults for exception + irq handlers.

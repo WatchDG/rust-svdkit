@@ -10,7 +10,7 @@ pub mod clock;
 pub mod gpio;
 pub mod power;
 pub mod timer;
-pub mod uart;
+// pub mod uart;
 pub mod usb;
 
 #[derive(Debug, Clone)]
@@ -64,10 +64,10 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
         lib_lines.push("pub mod timer;".to_string());
     }
 
-    let uarts = uart::collect_uarts(device);
-    if !uarts.is_empty() {
-        lib_lines.push("pub mod uart;".to_string());
-    }
+    // let uarts = uart::collect_uarts(device);
+    // if !uarts.is_empty() {
+    //     lib_lines.push("pub mod uart;".to_string());
+    // }
 
     let usb_devices = usb::collect_usb_devices(device);
     let has_usb = !usb_devices.is_empty();
@@ -117,7 +117,7 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
         content.push_str("#[allow(non_snake_case)]\n\n");
         content.push_str("use super::pac;\n\n");
 
-        for port in gpio_ports {
+        for port in &gpio_ports {
             content.push_str(&port.render()?);
             content.push('\n');
         }
@@ -146,22 +146,23 @@ pub fn generate_device_hal_dir(device: &svd::Device) -> Result<GeneratedDir> {
         });
     }
 
-    if !timers.is_empty() {
-        let mut content = String::new();
-        content.push_str("#[allow(dead_code)]\n");
-        content.push_str("#[allow(non_snake_case)]\n\n");
-        content.push_str("use super::pac;\n\n");
-
-        for u in uarts {
-            content.push_str(&u.render()?);
-            content.push('\n');
-        }
-
-        files.push(GeneratedFile {
-            file_name: "uart/mod.rs".to_string(),
-            content,
-        });
-    }
+    // UART generation disabled
+    // if !timers.is_empty() {
+    //     let mut content = String::new();
+    //     content.push_str("#[allow(dead_code)]\n");
+    //     content.push_str("#[allow(non_snake_case)]\n\n");
+    //     content.push_str("use super::pac;\n\n");
+    //
+    //     for u in uarts {
+    //         content.push_str(&u.render()?);
+    //         content.push('\n');
+    //     }
+    //
+    //     files.push(GeneratedFile {
+    //         file_name: "uart/mod.rs".to_string(),
+    //         content,
+    //     });
+    // }
 
     if has_usb {
         let mut content = String::new();
@@ -277,25 +278,10 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
         out.push_str("}\n");
     }
 
-    let uarts = uart::collect_uarts(device);
-    let has_uarts = !uarts.is_empty();
-    if has_uarts {
-        if has_gpio_ports || has_timers {
-            out.push('\n');
-        }
-        out.push_str("pub mod uart {\n");
-        out.push_str("    use super::pac;\n\n");
-        for u in uarts {
-            out.push_str(&u.render()?);
-            out.push('\n');
-        }
-        out.push_str("}\n");
-    }
-
     let usb_devices = usb::collect_usb_devices(device);
     let has_usb = !usb_devices.is_empty();
     if has_usb {
-        if has_gpio_ports || has_timers || has_uarts {
+        if has_gpio_ports || has_timers {
             out.push('\n');
         }
         out.push_str("pub mod usb {\n");
@@ -310,7 +296,7 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
     let clocks = clock::collect_clocks(device);
     let has_clocks = !clocks.is_empty();
     if has_clocks {
-        if has_gpio_ports || has_timers || has_uarts || has_usb {
+        if has_gpio_ports || has_timers || has_usb {
             out.push('\n');
         }
         out.push_str("pub mod clock {\n");
@@ -324,7 +310,7 @@ pub fn generate_device_hal_rs(device: &svd::Device) -> Result<String> {
 
     let power_devices = power::collect_power_devices(device);
     if !power_devices.is_empty() {
-        if has_gpio_ports || has_timers || has_uarts || has_usb || has_clocks {
+        if has_gpio_ports || has_timers || has_usb || has_clocks {
             out.push('\n');
         }
         out.push_str("pub mod power {\n");
