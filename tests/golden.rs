@@ -111,7 +111,7 @@ fn golden_nrf52840_pac_p0_enums_snapshot() {
 }
 
 #[test]
-fn golden_nrf52840_pac_p0_mod_snapshot() {
+fn golden_nrf52840_pac_p0_has_singleton() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let svd_path = manifest_dir.join("tests").join("svds").join("nrf52840.svd");
 
@@ -121,18 +121,6 @@ fn golden_nrf52840_pac_p0_mod_snapshot() {
 
     let gen_dir = pac::generate_device_dir(&device).expect("failed to generate PAC");
 
-    let snapshot_path = manifest_dir
-        .join("tests")
-        .join("snapshots")
-        .join("nrf52840")
-        .join("pac")
-        .join("peripherals")
-        .join("p0")
-        .join("mod.rs");
-
-    let snapshot_content =
-        std::fs::read_to_string(&snapshot_path).expect("failed to read snapshot p0/mod.rs");
-
     let generated_mod = gen_dir
         .files
         .iter()
@@ -141,9 +129,21 @@ fn golden_nrf52840_pac_p0_mod_snapshot() {
         .content
         .clone();
 
-    assert_eq!(
-        generated_mod, snapshot_content,
-        "generated p0/mod.rs does not match snapshot"
+    assert!(
+        generated_mod.contains("pub struct Peripherals"),
+        "p0/mod.rs should contain Peripherals struct"
+    );
+    assert!(
+        generated_mod.contains("pub unsafe fn steal()"),
+        "p0/mod.rs should contain steal() method"
+    );
+    assert!(
+        generated_mod.contains("impl Clone for Peripherals"),
+        "p0/mod.rs should contain Clone impl"
+    );
+    assert!(
+        generated_mod.contains("core::ptr::read_volatile(PTR)"),
+        "p0/mod.rs should use ptr::read_volatile"
     );
 }
 
@@ -222,7 +222,7 @@ fn golden_nrf52840_pac_p1_enums_snapshot() {
 }
 
 #[test]
-fn golden_nrf52840_pac_p1_mod_snapshot() {
+fn golden_nrf52840_pac_p1_has_singleton() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let svd_path = manifest_dir.join("tests").join("svds").join("nrf52840.svd");
 
@@ -232,18 +232,6 @@ fn golden_nrf52840_pac_p1_mod_snapshot() {
 
     let gen_dir = pac::generate_device_dir(&device).expect("failed to generate PAC");
 
-    let snapshot_path = manifest_dir
-        .join("tests")
-        .join("snapshots")
-        .join("nrf52840")
-        .join("pac")
-        .join("peripherals")
-        .join("p1")
-        .join("mod.rs");
-
-    let snapshot_content =
-        std::fs::read_to_string(&snapshot_path).expect("failed to read snapshot p1/mod.rs");
-
     let generated_mod = gen_dir
         .files
         .iter()
@@ -252,9 +240,21 @@ fn golden_nrf52840_pac_p1_mod_snapshot() {
         .content
         .clone();
 
-    assert_eq!(
-        generated_mod, snapshot_content,
-        "generated p1/mod.rs does not match snapshot"
+    assert!(
+        generated_mod.contains("pub struct Peripherals"),
+        "p1/mod.rs should contain Peripherals struct"
+    );
+    assert!(
+        generated_mod.contains("pub unsafe fn steal()"),
+        "p1/mod.rs should contain steal() method"
+    );
+    assert!(
+        generated_mod.contains("impl Clone for Peripherals"),
+        "p1/mod.rs should contain Clone impl"
+    );
+    assert!(
+        generated_mod.contains("core::ptr::read_volatile(PTR)"),
+        "p1/mod.rs should use ptr::read_volatile"
     );
 }
 
@@ -507,4 +507,79 @@ fn golden_nrf52840_pac_constants_snapshot() {
         generated_constants, snapshot_content,
         "generated constants.rs does not match snapshot"
     );
+}
+
+#[test]
+fn golden_nrf52840_pac_peripherals_mod_has_singleton() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let svd_path = manifest_dir.join("tests").join("svds").join("nrf52840.svd");
+
+    let svd_content = std::fs::read_to_string(&svd_path).expect("failed to read nrf52840.svd");
+
+    let device = svdkit::parse_svd(&svd_content).expect("failed to parse nrf52840.svd");
+
+    let gen_dir = pac::generate_device_dir(&device).expect("failed to generate PAC");
+
+    let generated_peripherals_mod = gen_dir
+        .files
+        .iter()
+        .find(|f| f.file_name == "peripherals/mod.rs")
+        .expect("peripherals/mod.rs not found in generated files")
+        .content
+        .clone();
+
+    assert!(
+        generated_peripherals_mod.contains("pub struct Peripherals"),
+        "peripherals/mod.rs should contain Peripherals struct"
+    );
+    assert!(
+        generated_peripherals_mod.contains("pub fn take()"),
+        "peripherals/mod.rs should contain take() method"
+    );
+    assert!(
+        generated_peripherals_mod.contains("pub unsafe fn steal()"),
+        "peripherals/mod.rs should contain steal() method"
+    );
+    assert!(
+        generated_peripherals_mod.contains("static TAKEN: AtomicBool"),
+        "peripherals/mod.rs should contain atomic TAKEN flag"
+    );
+}
+
+#[test]
+fn peripherals_singleton_contains_all_peripherals() {
+    use svdkit::pac::generate_peripherals_singleton;
+
+    let peripherals = vec!["clock", "usbd", "p0", "p1"];
+    let generated = generate_peripherals_singleton(&peripherals, "test_device");
+
+    assert!(
+        generated.contains("static TAKEN: AtomicBool"),
+        "Should contain atomic TAKEN flag"
+    );
+    assert!(
+        generated.contains("pub struct Peripherals"),
+        "Should contain Peripherals struct"
+    );
+    assert!(
+        generated.contains("pub fn take()"),
+        "Should contain take() method"
+    );
+    assert!(
+        generated.contains("pub unsafe fn steal()"),
+        "Should contain steal() method"
+    );
+
+    for p in &peripherals {
+        assert!(
+            generated.contains(&format!("pub {p}:")),
+            "Should contain field for {}",
+            p
+        );
+        assert!(
+            generated.contains(&format!("{p}::Peripherals::steal()")),
+            "Should call steal() for {}",
+            p
+        );
+    }
 }

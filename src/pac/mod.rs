@@ -527,6 +527,50 @@ pub fn generate_constants_file(device: &svd::Device) -> String {
     )
 }
 
+pub fn generate_peripherals_singleton(peripherals: &[&str], device_name: &str) -> String {
+    let mut out = String::new();
+
+    out.push_str("use core::sync::atomic::{AtomicBool, Ordering};\n");
+    out.push_str("\n");
+    out.push_str("static TAKEN: AtomicBool = AtomicBool::new(false);\n");
+    out.push_str("\n");
+    out.push_str("#[non_exhaustive]\n");
+    out.push_str("pub struct Peripherals {\n");
+    for p in peripherals {
+        out.push_str(&format!("    pub {p}: {p}::Peripherals,\n"));
+    }
+    out.push_str("}\n");
+    out.push_str("\n");
+    out.push_str("impl Peripherals {\n");
+    out.push_str("    #[inline]\n");
+    out.push_str("    pub fn take() -> Option<Self> {\n");
+    out.push_str("        if TAKEN.compare_exchange(\n");
+    out.push_str("            false,\n");
+    out.push_str("            true,\n");
+    out.push_str("            Ordering::SeqCst,\n");
+    out.push_str("            Ordering::SeqCst,\n");
+    out.push_str("        )\n");
+    out.push_str("        .is_ok()\n");
+    out.push_str("        {\n");
+    out.push_str("            Some(unsafe { Self::steal() })\n");
+    out.push_str("        } else {\n");
+    out.push_str("            None\n");
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+    out.push_str("\n");
+    out.push_str("    #[inline]\n");
+    out.push_str("    pub unsafe fn steal() -> Self {\n");
+    out.push_str("        Self {\n");
+    for p in peripherals {
+        out.push_str(&format!("            {p}: {p}::Peripherals::steal(),\n"));
+    }
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+    out.push_str("}\n");
+
+    out
+}
+
 pub fn generate_device_dir_with_options(
     device: &svd::Device,
     options: PacOptions,
@@ -590,6 +634,11 @@ pub fn generate_device_dir_with_options(
         content: generate_constants_file(device),
     });
 
+    let peripheral_module_names: Vec<String> = periphs
+        .iter()
+        .map(|p| sanitize_module_name(&p.name))
+        .collect();
+
     files.push(GeneratedFile {
         file_name: "peripherals/mod.rs".to_string(),
         content: {
@@ -604,6 +653,14 @@ pub fn generate_device_dir_with_options(
                 let mod_name = sanitize_module_name(&p.name);
                 lines.push(format!("pub mod {mod_name};"));
             }
+            lines.push("".to_string());
+            lines.push(generate_peripherals_singleton(
+                &peripheral_module_names
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>(),
+                &device.name,
+            ));
             lines.join("\n")
         },
     });
@@ -869,6 +926,43 @@ fn generate_peripheral_file(
         mod_out.writeln(&format!(
             "pub const PTR_MUT: *mut {block_name} = BASE as *mut {block_name};"
         ))?;
+
+        mod_out.writeln("")?;
+        mod_out.writeln("/// Singleton wrapper for this peripheral.")?;
+        mod_out.writeln(&format!("pub struct Peripherals {{"))?;
+        mod_out.indent();
+        mod_out.writeln(&format!("    pub regs: {block_name},"))?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+        mod_out.writeln("impl Clone for Peripherals {")?;
+        mod_out.indent();
+        mod_out.writeln("    fn clone(&self) -> Self {")?;
+        mod_out.indent();
+        mod_out.writeln("        unsafe {")?;
+        mod_out.indent();
+        mod_out.writeln(&format!(
+            "            Self {{ regs: core::ptr::read_volatile(PTR) }}"
+        ))?;
+        mod_out.dedent();
+        mod_out.writeln("        }")?;
+        mod_out.dedent();
+        mod_out.writeln("    }")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
+        mod_out.writeln("impl Peripherals {")?;
+        mod_out.indent();
+        mod_out.writeln("    #[inline]")?;
+        mod_out.writeln("    pub unsafe fn steal() -> Self {")?;
+        mod_out.indent();
+        mod_out.writeln("        Self {")?;
+        mod_out.indent();
+        mod_out.writeln("            regs: core::ptr::read_volatile(PTR),")?;
+        mod_out.dedent();
+        mod_out.writeln("        }")?;
+        mod_out.dedent();
+        mod_out.writeln("    }")?;
+        mod_out.dedent();
+        mod_out.writeln("}")?;
     } else {
         mod_out.writeln("#[repr(C)]")?;
         mod_out.writeln("pub struct RegisterBlock;")?;
