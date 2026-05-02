@@ -99,7 +99,6 @@ pub fn emit_directory(ir: &PacIr, plan: &GenerationPlan) -> Result<crate::pac::G
             }
             if !p.field_enums.is_empty() {
                 out.writeln("pub mod enums;")?;
-                out.writeln("use self::enums as field_enums;")?;
             }
             if p.has_clusters {
                 out.writeln("pub mod clusters;")?;

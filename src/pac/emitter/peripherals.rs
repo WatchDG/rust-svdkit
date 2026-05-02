@@ -22,7 +22,6 @@ pub fn emit_peripheral_mod(
     }
     if !periph.field_enums.is_empty() {
         out.writeln("pub mod enums;")?;
-        out.writeln("use self::enums as field_enums;")?;
     }
     if periph.has_clusters {
         out.writeln("pub mod clusters;")?;

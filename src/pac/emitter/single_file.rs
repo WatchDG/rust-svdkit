@@ -102,10 +102,10 @@ fn emit_peripheral_inline(periph: &PeripheralIr, emit_field_methods: bool) -> Re
     }
 
     if !periph.field_enums.is_empty() {
-        out.writeln("pub mod field_enums {")?;
+        out.writeln("pub mod enums {")?;
         out.writeln(&enums::generate_enums_for_peripheral(periph)?)?;
         out.writeln("}")?;
-        out.writeln("use self::field_enums::*;")?;
+        out.writeln("use self::enums::*;")?;
         out.writeln("")?;
     }
 

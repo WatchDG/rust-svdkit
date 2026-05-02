@@ -178,7 +178,7 @@ fn emit_field_methods(out: &mut CodeWriter, reg: &RegisterFieldIr) -> Result<()>
                 let repr = repr_for_bits(width);
                 let enum_ty = &binding.enum_type_name;
                 out.writeln(&format!(
-                    "pub fn {method_base}(&self) -> Option<field_enums::{enum_ty}> {{ field_enums::{enum_ty}::from_bits(self.{method_base}_raw() as {repr}) }}"
+                    "pub fn {method_base}(&self) -> Option<enums::{enum_ty}> {{ enums::{enum_ty}::from_bits(self.{method_base}_raw() as {repr}) }}"
                 ))?;
             }
         }
@@ -211,7 +211,7 @@ fn emit_field_methods(out: &mut CodeWriter, reg: &RegisterFieldIr) -> Result<()>
                 }
                 out.writeln("#[inline(always)]")?;
                 out.writeln(&format!(
-                    "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{"
+                    "pub fn {set_name}(&self, v: enums::{enum_ty}) {{"
                 ))?;
                 out.indent();
                 out.writeln(&format!("let cur = self.read() as u64;"))?;
@@ -256,7 +256,7 @@ fn emit_field_methods(out: &mut CodeWriter, reg: &RegisterFieldIr) -> Result<()>
                 }
                 out.writeln("#[inline(always)]")?;
                 out.writeln(&format!(
-                    "pub fn {method_name}(&self, v: field_enums::{enum_ty}) {{"
+                    "pub fn {method_name}(&self, v: enums::{enum_ty}) {{"
                 ))?;
                 out.indent();
                 if call == "write" && lsb == 0 && (width as u64) == reg_bits {

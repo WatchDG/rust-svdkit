@@ -753,12 +753,6 @@ pub fn generate_device_dir_with_options(
                         "pub mod registers;",
                         "pub mod registers;\npub mod clusters;",
                     );
-                } else if mod_file.content.contains("use self::enums as field_enums;") {
-                    mod_file.content = mod_file.content.replacen(
-                        "use self::enums as field_enums;",
-                        "use self::enums as field_enums;\n\npub mod clusters;",
-                        1,
-                    );
                 } else if mod_file.content.contains("pub mod enums;\n") {
                     mod_file.content = mod_file.content.replacen(
                         "pub mod enums;\n",
@@ -891,8 +885,7 @@ fn generate_peripheral_file(
             type_defs.s.clear();
         }
 
-        if regs_out.s.contains("field_enums::") {
-            regs_out.s = regs_out.s.replace("field_enums::", "enums::");
+        if regs_out.s.contains("enums::") {
             regs_out.s = format!("use super::enums;\n\n{}", regs_out.s);
         }
 
@@ -931,13 +924,9 @@ fn generate_peripheral_file(
             type_defs.s.clear();
         }
 
-        if regs_out.s.contains("field_enums::") {
-            regs_out.s = regs_out.s.replace("field_enums::", "enums::");
+        if regs_out.s.contains("enums::") {
             if !regs_out.s.contains("use super::enums;") {
-                if let Some(pos) = regs_out.s.find("macros::*;\n") {
-                    let insert_at = pos + "macros::*;\n".len();
-                    regs_out.s.insert_str(insert_at, "use super::enums;\n\n");
-                }
+                regs_out.s = format!("use super::enums;\n\n{}", regs_out.s);
             }
         }
 
@@ -1190,8 +1179,8 @@ fn generate_cluster_files(
 
     // --- Post-generation: insert only needed imports into regs_out ---
     let mut regs_imports = String::new();
-    if regs_out.s.contains("field_enums::") {
-        regs_imports.push_str(&format!("use {regs_enums_prefix}enums as field_enums;\n"));
+    if regs_out.s.contains("enums::") {
+        regs_imports.push_str(&format!("use {regs_enums_prefix}enums;\n"));
     }
     if regs_out.s.contains("PhantomData") {
         regs_imports.push_str("use core::marker::PhantomData;\n");
@@ -3497,7 +3486,7 @@ fn register_wrapper_type(
                     }
                     out.writeln("#[inline(always)]")?;
                     out.writeln(&format!(
-                        "pub fn {method_base}(&self) -> Option<field_enums::{enum_ty}> {{ field_enums::{enum_ty}::from_bits(self.{method_base}_raw() as {repr}) }}",
+                        "pub fn {method_base}(&self) -> Option<enums::{enum_ty}> {{ enums::{enum_ty}::from_bits(self.{method_base}_raw() as {repr}) }}",
                         repr = helpers::repr_for_bits(width)
                     ))?;
                 }
@@ -3534,7 +3523,7 @@ fn register_wrapper_type(
                     }
                     out.writeln("#[inline(always)]")?;
                     out.writeln(&format!(
-                        "pub fn {set_name}(&self, v: field_enums::{enum_ty}) {{"
+                        "pub fn {set_name}(&self, v: enums::{enum_ty}) {{"
                     ))?;
                     out.indent();
                     out.writeln(&format!("let cur = self.read() as u64;"))?;
@@ -3627,7 +3616,7 @@ fn register_wrapper_type(
                     }
                     out.writeln("#[inline(always)]")?;
                     out.writeln(&format!(
-                        "pub fn {method_name}(&self, v: field_enums::{enum_ty}) {{"
+                        "pub fn {method_name}(&self, v: enums::{enum_ty}) {{"
                     ))?;
                     out.indent();
                     if let Some((min, max)) = resolve_write_constraint_range(ctx, r, f) {
