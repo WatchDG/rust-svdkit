@@ -858,11 +858,6 @@ fn generate_peripheral_file(
     let has_registers = !register_items.is_empty();
 
     if has_registers {
-        regs_out.writeln("use super::super::super::macros::*;")?;
-        regs_out.writeln("")?;
-    }
-
-    if has_registers {
         emit_register_block_items(
             st,
             &mut CodeWriter::new(),
@@ -898,10 +893,7 @@ fn generate_peripheral_file(
 
         if regs_out.s.contains("field_enums::") {
             regs_out.s = regs_out.s.replace("field_enums::", "enums::");
-            if let Some(pos) = regs_out.s.find("macros::*;\n") {
-                let insert_at = pos + "macros::*;\n".len();
-                regs_out.s.insert_str(insert_at, "use super::enums;\n\n");
-            }
+            regs_out.s = format!("use super::enums;\n\n{}", regs_out.s);
         }
 
         if has_registers {
@@ -1031,20 +1023,15 @@ fn generate_peripheral_file(
             used.push("Written");
         }
         if !used.is_empty() || has_once {
-            let pos = regs_out
-                .s
-                .find("macros::*;\n")
-                .map(|p| p + "macros::*;\n".len())
-                .unwrap_or(0);
+            let mut imports = String::new();
             if !used.is_empty() {
                 let import = format!("use super::super::super::types::{{{}}};", used.join(", "));
-                regs_out.s.insert_str(pos, &format!("{}\n", import));
+                imports.push_str(&format!("{}\n", import));
             }
             if has_once {
-                regs_out
-                    .s
-                    .insert_str(pos, "use core::marker::PhantomData;\n");
+                imports.push_str("use core::marker::PhantomData;\n");
             }
+            regs_out.s = format!("{}{}", imports, regs_out.s);
         }
     }
 
@@ -1117,45 +1104,17 @@ fn generate_cluster_files(
     let mut files = Vec::new();
     let cluster_mod_name = sanitize_module_name(&c.name);
 
-    let mut mod_out = CodeWriter::new();
-    let mut regs_out = CodeWriter::new();
-    let mut type_defs = CodeWriter::new();
-
     let regs_enums_prefix = "super::".repeat(3 + 2 * depth);
     let regs_root_prefix = "super::".repeat(5 + 2 * depth);
+    let mod_enums_prefix = "super::".repeat(2 + 2 * depth);
+    let mod_root_prefix = "super::".repeat(4 + 2 * depth);
 
-    let has_once_regs = c.items.iter().any(|item| {
-        if let svd::RegisterBlockItem::Register { register } = item {
-            let access = resolve_access(ctx, register);
-            matches!(
-                access.access,
-                svd::AccessType::WriteOnce | svd::AccessType::ReadWriteOnce
-            )
-        } else {
-            false
-        }
-    });
-
-    regs_out.writeln(&format!("use {regs_enums_prefix}enums as field_enums;"))?;
-    if has_once_regs {
-        regs_out.writeln("use core::marker::PhantomData;")?;
-        regs_out.writeln(&format!(
-            "use {regs_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten}};"
-        ))?;
-    } else {
-        regs_out.writeln(&format!(
-            "use {regs_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT}};"
-        ))?;
-    }
-    regs_out.writeln(&format!("use {regs_root_prefix}macros::*;"))?;
-    regs_out.writeln("")?;
-
+    let mut mod_out = CodeWriter::new();
     mod_out.writeln("#[allow(non_snake_case)]")?;
     mod_out.writeln("#[allow(non_camel_case_types)]")?;
     mod_out.writeln("#[allow(dead_code)]")?;
     mod_out.writeln("#[allow(unused_imports)]")?;
     mod_out.writeln("#[allow(unsafe_op_in_unsafe_fn)]")?;
-    mod_out.writeln("")?;
 
     let child_ctx = Ctx {
         device: ctx.device,
@@ -1166,6 +1125,9 @@ fn generate_cluster_files(
             s
         },
     };
+
+    let mut regs_out = CodeWriter::new();
+    let mut type_defs = CodeWriter::new();
 
     emit_register_block_items(
         st,
@@ -1184,17 +1146,9 @@ fn generate_cluster_files(
         type_defs.s.clear();
     }
 
-    let mod_enums_prefix = "super::".repeat(2 + 2 * depth);
-    let mod_root_prefix = "super::".repeat(4 + 2 * depth);
-
-    mod_out.writeln(&format!(
-        "use {mod_root_prefix}types::{{RW, RO, WO, W1S, W1C, W0S, W0C, WT, RWOnce, WOOnce, Unwritten, Written}};"
-    ))?;
-    mod_out.writeln(&format!("use {mod_root_prefix}macros;"))?;
-    mod_out.writeln(&format!("use {mod_enums_prefix}enums;"))?;
     mod_out.writeln("pub mod registers;")?;
-    mod_out.writeln("")?;
 
+    mod_out.writeln("")?;
     mod_out.writeln("#[repr(C)]")?;
     mod_out.writeln(&format!("pub struct {} {{", sanitize_type_name(&c.name)))?;
     mod_out.indent();
@@ -1234,6 +1188,54 @@ fn generate_cluster_files(
         .any(|it| matches!(it, svd::RegisterBlockItem::Cluster { .. }));
     if has_nested_clusters {
         mod_out.writeln("pub mod clusters;")?;
+    }
+
+    // --- Post-generation: insert only needed imports into regs_out ---
+    let mut regs_imports = String::new();
+    if regs_out.s.contains("field_enums::") {
+        regs_imports.push_str(&format!("use {regs_enums_prefix}enums as field_enums;\n"));
+    }
+    if regs_out.s.contains("PhantomData") {
+        regs_imports.push_str("use core::marker::PhantomData;\n");
+    }
+    let all_reg_types = ["RW", "RO", "WO", "W1S", "W1C", "W0S", "W0C", "WT", "RWOnce", "WOOnce"];
+    let mut used_reg_types: Vec<&str> = all_reg_types
+        .iter()
+        .filter(|t| regs_out.s.contains(&format!("{t}<")))
+        .copied()
+        .collect();
+    if regs_out.s.contains("Unwritten") {
+        used_reg_types.push("Unwritten");
+    }
+    if !used_reg_types.is_empty() {
+        regs_imports.push_str(&format!("use {regs_root_prefix}types::{{{}}};\n", used_reg_types.join(", ")));
+    }
+    if !regs_imports.is_empty() {
+        regs_out.s = format!("{}{}", regs_imports, regs_out.s);
+    }
+
+    // --- Post-generation: insert only needed imports into mod_out ---
+    let mut mod_imports = String::new();
+    let all_mod_types = ["RW", "RO", "WO", "W1S", "W1C", "W0S", "W0C", "WT", "RWOnce", "WOOnce"];
+    let used_mod_types: Vec<&str> = all_mod_types
+        .iter()
+        .filter(|t| mod_out.s.contains(&format!("{t}<")))
+        .copied()
+        .collect();
+    let mut mod_ts: Vec<&str> = used_mod_types;
+    if mod_out.s.contains("Unwritten") { mod_ts.push("Unwritten"); }
+    if mod_out.s.contains("Written") { mod_ts.push("Written"); }
+    if !mod_ts.is_empty() {
+        mod_imports.push_str(&format!("use {mod_root_prefix}types::{{{}}};\n", mod_ts.join(", ")));
+    }
+    if mod_out.s.contains("enums::") {
+        mod_imports.push_str(&format!("use {mod_enums_prefix}enums;\n"));
+    }
+    if !mod_imports.is_empty() {
+        if let Some(pos) = mod_out.s.find("#[allow(unsafe_op_in_unsafe_fn)]\n") {
+            let insert_at = pos + "#[allow(unsafe_op_in_unsafe_fn)]\n".len();
+            mod_out.s.insert_str(insert_at, &format!("\n{}", mod_imports));
+        }
     }
 
     files.push(GeneratedFile {
