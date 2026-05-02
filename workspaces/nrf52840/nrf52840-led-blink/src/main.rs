@@ -29,7 +29,7 @@ fn delay_nops(iterations: u32) {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn main() -> ! {
     let led = unsafe {
         let pin = p0::pin(LED_PIN);
